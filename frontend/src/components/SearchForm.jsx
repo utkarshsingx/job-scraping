@@ -79,14 +79,14 @@ const SearchForm = ({ onSearch, loading }) => {
         </div>
 
         <div className="form-group">
-          <label htmlFor="keyword">Keyword</label>
+          <label htmlFor="keyword">Skills / Designations</label>
           <input
             type="text"
             id="keyword"
             name="keyword"
             value={formData.keyword}
             onChange={handleChange}
-            placeholder="e.g., web development, python developer"
+            placeholder="Skills, Designations, Companies"
             className={`form-control ${errors.keyword ? 'error' : ''}`}
             disabled={loading}
           />
@@ -101,7 +101,7 @@ const SearchForm = ({ onSearch, loading }) => {
             name="location"
             value={formData.location}
             onChange={handleChange}
-            placeholder="e.g., india, bangalore, mumbai"
+            placeholder="City, State or Country"
             className={`form-control ${errors.location ? 'error' : ''}`}
             disabled={loading}
           />
@@ -109,14 +109,14 @@ const SearchForm = ({ onSearch, loading }) => {
         </div>
 
         <div className="form-group">
-          <label htmlFor="experience">Experience (Years)</label>
+          <label htmlFor="experience">Experience</label>
           <input
             type="number"
             id="experience"
             name="experience"
             value={formData.experience}
             onChange={handleChange}
-            placeholder="e.g., 1, 2, 3"
+            placeholder="Years"
             min="0"
             className={`form-control ${errors.experience ? 'error' : ''}`}
             disabled={loading}
@@ -129,7 +129,7 @@ const SearchForm = ({ onSearch, loading }) => {
           className="submit-button"
           disabled={loading}
         >
-          {loading ? 'Searching...' : 'Search Jobs'}
+          {loading ? 'Searching...' : 'Search'}
         </button>
       </form>
     </div>
