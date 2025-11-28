@@ -13,6 +13,10 @@ import time
 import urllib.parse
 import os
 import shutil
+import requests
+import json
+import random
+import string
 
 
 class NaukriScraper:
@@ -144,9 +148,11 @@ class NaukriScraper:
         keyword_formatted = keyword.lower().replace(' ', '-')
         location_formatted = location.lower().replace(' ', '-')
         
-        # Build base URL
-        url_type = 'jobs' if job_type.lower() == 'job' else 'internships'
-        base_url = f"https://www.naukri.com/{keyword_formatted}-{url_type}-in-{location_formatted}"
+        # Build base URL - correct format for internships
+        if job_type.lower() == 'internship':
+            base_url = f"https://www.naukri.com/{keyword_formatted}-internship-jobs-in-{location_formatted}"
+        else:
+            base_url = f"https://www.naukri.com/{keyword_formatted}-jobs-in-{location_formatted}"
         
         # Add query parameters
         params = {
@@ -154,8 +160,14 @@ class NaukriScraper:
             'l': location
         }
         
-        if experience:
+        if experience is not None:
             params['experience'] = experience
+        
+        # Add internship-specific parameters
+        if job_type.lower() == 'internship':
+            params['qproductJobSource'] = '2'
+            params['qinternshipFlag'] = 'true'
+            params['naukriCampus'] = 'true'
         
         query_string = urllib.parse.urlencode(params)
         full_url = f"{base_url}?{query_string}"
@@ -181,18 +193,30 @@ class NaukriScraper:
         
         try:
             self.driver.get(url)
-            time.sleep(5)  # Wait for page to load
+            # Reduced initial wait time - wait for specific element instead
+            time.sleep(2)  # Reduced from 5 seconds
             
-            # Handle popups or modals if they appear
+            # Handle popups or modals if they appear (non-blocking)
             try:
-                popup = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Close') or contains(text(), 'Skip') or contains(@class, 'close')]")
-                if popup:
-                    popup.click()
-                    time.sleep(1)
+                popup_selectors = [
+                    "//button[contains(text(), 'Close')]",
+                    "//button[contains(text(), 'Skip')]",
+                    "//span[contains(@class, 'close')]",
+                    "//div[contains(@class, 'closeIcon')]"
+                ]
+                for selector in popup_selectors:
+                    try:
+                        popup = self.driver.find_element(By.XPATH, selector)
+                        if popup and popup.is_displayed():
+                            popup.click()
+                            time.sleep(0.5)
+                            break
+                    except:
+                        continue
             except:
                 pass  # No popup found
             
-            # Wait for job cards container to load - try multiple XPath variations
+            # Wait for job cards container to load with reduced timeout
             container_xpaths = [
                 "/html/body/div[1]/div/main/div[1]/div[2]/div[2]/div/div[1]",
                 "//div[contains(@class, 'srp-jobtuple-wrapper')]",
@@ -200,9 +224,10 @@ class NaukriScraper:
             ]
             
             container_found = False
+            short_wait = WebDriverWait(self.driver, 5)  # Reduced from 20 seconds
             for xpath in container_xpaths:
                 try:
-                    self.wait.until(
+                    short_wait.until(
                         EC.presence_of_element_located((By.XPATH, xpath))
                     )
                     container_found = True
@@ -214,9 +239,9 @@ class NaukriScraper:
                 print("Job cards container not found")
                 return []
             
-            # Scroll to load more content
+            # Quick scroll to load content (no wait needed)
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(3)
+            time.sleep(1)  # Reduced from 3 seconds
             
             jobs = []
             card_index = 1
@@ -251,13 +276,275 @@ class NaukriScraper:
                         if card_index > 50:  # Safety limit
                             break
             
+            # If scraping returned no jobs, try API fallback
+            if len(jobs) == 0:
+                print("No jobs found via scraping, trying API fallback...")
+                api_jobs = self.scrape_jobs_via_api(job_type, keyword, location, experience, max_jobs)
+                if api_jobs and len(api_jobs) > 0:
+                    print(f"API fallback returned {len(api_jobs)} jobs")
+                    return api_jobs
+            
             return jobs
             
         except Exception as e:
             print(f"Error scraping jobs: {e}")
             import traceback
             traceback.print_exc()
+            # Try API as fallback even on error
+            try:
+                print("Trying API fallback after scraping error...")
+                api_jobs = self.scrape_jobs_via_api(job_type, keyword, location, experience, max_jobs)
+                if api_jobs:
+                    return api_jobs
+            except:
+                pass
             return []
+    
+    def build_api_url(self, job_type, keyword, location, experience=None, page_no=1):
+        """
+        Build Naukri.com API URL from parameters
+        
+        Args:
+            job_type: 'job' or 'internship'
+            keyword: Job search keyword
+            location: Job location
+            experience: Years of experience (optional)
+            page_no: Page number for pagination
+        
+        Returns:
+            Complete API URL string
+        """
+        keyword_formatted = keyword.lower().replace(' ', '-')
+        
+        # Build seoKey for the URL
+        if job_type.lower() == 'internship':
+            seo_key = f"{keyword_formatted}-internship-jobs"
+        else:
+            seo_key = f"{keyword_formatted}-jobs"
+        
+        # Build API URL parameters
+        params = {
+            'noOfResults': 20,
+            'urlType': 'search_by_keyword',
+            'searchType': 'adv',
+            'keyword': keyword,
+            'sort': 'p',
+            'pageNo': page_no,
+            'k': keyword,
+            'src': 'jobsearchDesk',
+            'seoKey': seo_key
+        }
+        
+        if experience is not None:
+            params['experience'] = experience
+        
+        # Add internship-specific parameters
+        if job_type.lower() == 'internship':
+            params['qproductJobSource'] = '2'
+            params['qinternshipFlag'] = 'true'
+            params['naukriCampus'] = 'true'
+        
+        # Generate a session ID (random)
+        params['sid'] = ''.join(random.choices(string.digits, k=16))
+        
+        query_string = urllib.parse.urlencode(params)
+        api_url = f"https://www.naukri.com/jobapi/v3/search?{query_string}"
+        
+        return api_url
+    
+    def scrape_jobs_via_api(self, job_type, keyword, location, experience=None, max_jobs=20):
+        """
+        Scrape jobs using Naukri.com API endpoint (fallback method)
+        Uses cookies from Selenium session if available
+        
+        Args:
+            job_type: 'job' or 'internship'
+            keyword: Job search keyword
+            location: Job location
+            experience: Years of experience (optional)
+            max_jobs: Maximum number of jobs to scrape
+        
+        Returns:
+            List of job dictionaries
+        """
+        try:
+            api_url = self.build_api_url(job_type, keyword, location, experience)
+            print(f"Trying API URL: {api_url}")
+            
+            # Prepare headers - minimal set that might work
+            headers = {
+                'accept': 'application/json',
+                'accept-language': 'en-US,en;q=0.9',
+                'appid': '109',
+                'clientid': 'd3skt0p',
+                'content-type': 'application/json',
+                'systemid': 'Naukri',
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+                'referer': self.build_url(job_type, keyword, location, experience),
+            }
+            
+            # Try to get cookies from Selenium session if driver exists
+            cookies = {}
+            if hasattr(self, 'driver') and self.driver:
+                try:
+                    selenium_cookies = self.driver.get_cookies()
+                    for cookie in selenium_cookies:
+                        cookies[cookie['name']] = cookie['value']
+                except:
+                    pass
+            
+            # Make API request with cookies
+            session = requests.Session()
+            if cookies:
+                session.cookies.update(cookies)
+            
+            response = session.get(api_url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                no_of_jobs = data.get('noOfJobs', 0)
+                print(f"API Response received: noOfJobs={no_of_jobs}")
+                
+                # Try different possible field names for job data
+                job_data_list = None
+                
+                # Check common field names
+                for field_name in ['jobDetails', 'jobDetailsList', 'jobs', 'results', 'data']:
+                    if field_name in data and isinstance(data[field_name], list) and len(data[field_name]) > 0:
+                        job_data_list = data[field_name]
+                        break
+                
+                if job_data_list:
+                    jobs = self._parse_api_job_data(job_data_list, max_jobs)
+                    if jobs:
+                        print(f"API returned {len(jobs)} jobs")
+                        return jobs
+                
+                # If noOfJobs > 0 but no job data found, try parsing the entire response
+                if no_of_jobs > 0:
+                    print(f"API indicates {no_of_jobs} jobs but job data not found in expected fields")
+                    # Try to extract from any array in the response
+                    if isinstance(data, dict):
+                        for key, value in data.items():
+                            if isinstance(value, list) and len(value) > 0:
+                                # Check if first item looks like job data
+                                if isinstance(value[0], dict) and ('title' in value[0] or 'jobTitle' in value[0]):
+                                    jobs = self._parse_api_job_data(value, max_jobs)
+                                    if jobs:
+                                        return jobs
+                
+                print("API returned no job data")
+                return []
+            else:
+                print(f"API request failed with status {response.status_code}: {response.text[:200]}")
+                return []
+                
+        except Exception as e:
+            print(f"Error in API scraping: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    
+    def _parse_api_job_data(self, job_details_list, max_jobs=20):
+        """
+        Parse job data from API response
+        
+        Args:
+            job_details_list: List of job objects from API
+            max_jobs: Maximum number of jobs to return
+        
+        Returns:
+            List of job dictionaries in our format
+        """
+        jobs = []
+        
+        for job_detail in job_details_list[:max_jobs]:
+            try:
+                job_data = {
+                    'job_title': '',
+                    'company_name': '',
+                    'company_logo': '',
+                    'rating': '',
+                    'reviews': '',
+                    'experience': '',
+                    'salary': '',
+                    'location': '',
+                    'job_description': '',
+                    'tags': [],
+                    'job_post_date': ''
+                }
+                
+                # Extract job title
+                if 'title' in job_detail:
+                    job_data['job_title'] = job_detail['title']
+                elif 'jobTitle' in job_detail:
+                    job_data['job_title'] = job_detail['jobTitle']
+                
+                # Extract company name
+                if 'companyName' in job_detail:
+                    job_data['company_name'] = job_detail['companyName']
+                elif 'company' in job_detail and isinstance(job_detail['company'], dict):
+                    job_data['company_name'] = job_detail['company'].get('name', '')
+                
+                # Extract company logo
+                if 'companyLogo' in job_detail:
+                    job_data['company_logo'] = job_detail['companyLogo']
+                elif 'company' in job_detail and isinstance(job_detail['company'], dict):
+                    job_data['company_logo'] = job_detail['company'].get('logo', '')
+                
+                # Extract location
+                if 'placeholders' in job_detail and isinstance(job_detail['placeholders'], list):
+                    location_parts = []
+                    for placeholder in job_detail['placeholders']:
+                        if isinstance(placeholder, dict) and 'label' in placeholder:
+                            location_parts.append(placeholder['label'])
+                    if location_parts:
+                        job_data['location'] = ', '.join(location_parts)
+                
+                # Extract experience
+                if 'workExp' in job_detail and isinstance(job_detail['workExp'], dict):
+                    min_exp = job_detail['workExp'].get('minExp', '')
+                    max_exp = job_detail['workExp'].get('maxExp', '')
+                    if min_exp and max_exp:
+                        job_data['experience'] = f"{min_exp}-{max_exp} Yrs"
+                    elif min_exp:
+                        job_data['experience'] = f"{min_exp}+ Yrs"
+                
+                # Extract salary
+                if 'salaryDetail' in job_detail:
+                    salary_detail = job_detail['salaryDetail']
+                    if isinstance(salary_detail, dict):
+                        salary_label = salary_detail.get('label', '')
+                        if salary_label:
+                            job_data['salary'] = salary_label
+                
+                # Extract job description
+                if 'description' in job_detail:
+                    desc = job_detail['description']
+                    if isinstance(desc, str):
+                        job_data['job_description'] = desc[:500]  # Limit description length
+                
+                # Extract tags/skills
+                if 'tagsAndSkills' in job_detail:
+                    tags = job_detail['tagsAndSkills']
+                    if isinstance(tags, list):
+                        job_data['tags'] = [tag.get('label', tag) if isinstance(tag, dict) else str(tag) for tag in tags[:5]]
+                
+                # Extract job post date
+                if 'createdDate' in job_detail:
+                    job_data['job_post_date'] = job_detail['createdDate']
+                elif 'postedDate' in job_detail:
+                    job_data['job_post_date'] = job_detail['postedDate']
+                
+                # Only add if we have at least a job title
+                if job_data['job_title']:
+                    jobs.append(job_data)
+                    
+            except Exception as e:
+                print(f"Error parsing API job data: {e}")
+                continue
+        
+        return jobs
     
     def _extract_job_data(self, card_element, card_index):
         """Extract data from a single job card element"""
