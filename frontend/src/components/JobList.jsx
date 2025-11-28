@@ -2,7 +2,7 @@ import React from 'react';
 import JobCard from './JobCard';
 import '../styles/JobList.css';
 
-const JobList = ({ jobs, loading, hasSearched, totalCount = null }) => {
+const JobList = ({ jobs, loading, hasSearched, totalCount = null, searchState = null }) => {
   if (loading) {
     return (
       <div className="loading-container">
@@ -47,7 +47,7 @@ const JobList = ({ jobs, loading, hasSearched, totalCount = null }) => {
       </div>
       <div className="job-list">
         {jobs.map((job, index) => (
-          <JobCard key={index} job={job} />
+          <JobCard key={index} job={job} searchState={searchState} />
         ))}
       </div>
     </div>

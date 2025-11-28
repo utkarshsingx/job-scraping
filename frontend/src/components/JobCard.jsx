@@ -1,7 +1,10 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../styles/JobCard.css';
 
-const JobCard = ({ job }) => {
+const JobCard = ({ job, searchState = null }) => {
+  const navigate = useNavigate();
+
   // Get company initial for logo fallback
   const getCompanyInitial = (companyName) => {
     if (!companyName || companyName === 'N/A') return '?';
@@ -14,50 +17,66 @@ const JobCard = ({ job }) => {
 
   const companyInitial = getCompanyInitial(job.company_name);
 
+  const handleCardClick = () => {
+    if (job.job_url) {
+      // Save current scroll position before navigating
+      sessionStorage.setItem('jobSearchScrollPosition', window.scrollY.toString());
+      
+      // Encode the URL for use in route
+      const encodedUrl = encodeURIComponent(job.job_url);
+      // Pass search state so it can be restored when going back
+      navigate(`/job/${encodedUrl}`, {
+        state: {
+          restoreState: searchState
+        }
+      });
+    }
+  };
+
   return (
-    <div className="job-card">
-      <div className="job-card-top">
-        <div className="job-card-header">
-          <div className="job-title-section">
-            <h3 className="job-title">{job.job_title || 'N/A'}</h3>
-            <div className="company-info">
-              <div 
-                className={`company-logo-wrapper ${!job.company_logo ? 'no-logo' : ''}`}
-                data-initial={companyInitial}
-              >
-                {job.company_logo ? (
-                  <img 
-                    src={job.company_logo} 
-                    alt={job.company_name || 'Company logo'}
-                    className="company-logo"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                      e.target.parentElement.classList.add('no-logo');
-                    }}
-                  />
-                ) : (
-                  <span className="company-initial">{companyInitial}</span>
+    <div 
+      className="job-card"
+      onClick={handleCardClick}
+      style={{ cursor: job.job_url ? 'pointer' : 'default' }}
+    >
+      <div className="job-card-header">
+        <div 
+          className={`company-logo-wrapper ${!job.company_logo ? 'no-logo' : ''}`}
+          data-initial={companyInitial}
+        >
+          {job.company_logo ? (
+            <img 
+              src={job.company_logo} 
+              alt={job.company_name || 'Company logo'}
+              className="company-logo"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.parentElement.classList.add('no-logo');
+              }}
+            />
+          ) : (
+            <span className="company-initial">{companyInitial}</span>
+          )}
+        </div>
+        <div className="job-title-section">
+          <h3 className="job-title">{job.job_title || 'N/A'}</h3>
+          <div className="company-details">
+            <span className="company-name">{job.company_name || 'N/A'}</span>
+            {(job.rating || job.reviews) && (
+              <div className="job-rating-section">
+                {job.rating && (
+                  <span className="rating">
+                    <span className="star">★</span>
+                    {job.rating}
+                  </span>
+                )}
+                {job.reviews && (
+                  <span className="reviews">
+                    {job.reviews}
+                  </span>
                 )}
               </div>
-              <div className="company-details">
-                <span className="company-name">{job.company_name || 'N/A'}</span>
-                {(job.rating || job.reviews) && (
-                  <div className="job-rating-section">
-                    {job.rating && (
-                      <span className="rating">
-                        <span className="star">★</span>
-                        {job.rating}
-                      </span>
-                    )}
-                    {job.reviews && (
-                      <span className="reviews">
-                        {job.reviews}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -92,9 +111,10 @@ const JobCard = ({ job }) => {
       {job.tags && job.tags.length > 0 && (
         <div className="job-tags">
           {job.tags.map((tag, index) => (
-            <span key={index} className="tag">
-              {tag}
-            </span>
+            <React.Fragment key={index}>
+              <span className="tag">{tag}</span>
+              {index < job.tags.length - 1 && <span className="tag-separator">•</span>}
+            </React.Fragment>
           ))}
         </div>
       )}
@@ -103,7 +123,15 @@ const JobCard = ({ job }) => {
         {job.job_post_date && (
           <span className="job-post-date">{job.job_post_date}</span>
         )}
-        <button className="apply-button">
+        <button 
+          className="apply-button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (job.job_url) {
+              window.open(job.job_url, '_blank');
+            }
+          }}
+        >
           <span className="apply-text">Apply</span>
           <span className="apply-arrow">→</span>
         </button>

@@ -11,7 +11,27 @@ const api = axios.create({
 
 export const searchJobs = async (params) => {
   try {
-    const response = await api.post('/api/jobs/search/', params);
+    // Ensure page parameter is included
+    const requestParams = {
+      ...params,
+      page: params.page || 1,
+      page_size: params.page_size || 20
+    };
+    
+    const response = await api.post('/api/jobs/search/', requestParams);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { message: 'Network error. Please check if the backend is running.' };
+  }
+};
+
+export const getJobDetails = async (jobUrl) => {
+  try {
+    const response = await api.get('/api/jobs/details/', {
+      params: {
+        url: jobUrl
+      }
+    });
     return response.data;
   } catch (error) {
     throw error.response?.data || { message: 'Network error. Please check if the backend is running.' };
