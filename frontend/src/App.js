@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import SearchForm from './components/SearchForm';
 import JobList from './components/JobList';
+import FilterSidebar from './components/FilterSidebar';
 import { searchJobs } from './services/api';
 import './styles/App.css';
 
@@ -9,11 +10,13 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [selectedTags, setSelectedTags] = useState([]);
 
   const handleSearch = async (searchParams) => {
     setLoading(true);
     setError(null);
     setHasSearched(true);
+    setSelectedTags([]); // Clear filters on new search
     
     try {
       const data = await searchJobs(searchParams);
@@ -37,11 +40,32 @@ function App() {
     }
   };
 
+  // Filter jobs based on selected tags
+  const filteredJobs = useMemo(() => {
+    if (selectedTags.length === 0) {
+      return jobs;
+    }
+    
+    return jobs.filter(job => {
+      if (!job.tags || !Array.isArray(job.tags)) {
+        return false;
+      }
+      // Job must have at least one of the selected tags
+      return job.tags.some(tag => 
+        selectedTags.includes(tag.trim())
+      );
+    });
+  }, [jobs, selectedTags]);
+
   return (
     <div className="App">
       <header className="app-header">
-        <h1>Job Scraper</h1>
-        <p>Find your dream job from Naukri.com</p>
+        <div className="header-content">
+          <div className="logo-section">
+            <h1 className="logo-text">JobPortal</h1>
+            <span className="logo-subtitle">Find Your Dream Job</span>
+          </div>
+        </div>
       </header>
       
       <main className="app-main">
@@ -53,11 +77,23 @@ function App() {
           </div>
         )}
         
-        <JobList 
-          jobs={jobs} 
-          loading={loading} 
-          hasSearched={hasSearched}
-        />
+        {hasSearched && (
+          <div className={jobs.length > 0 ? "content-layout" : ""}>
+            {jobs.length > 0 && (
+              <FilterSidebar 
+                jobs={jobs} 
+                selectedTags={selectedTags}
+                onFilterChange={setSelectedTags}
+              />
+            )}
+            <JobList 
+              jobs={filteredJobs} 
+              loading={loading} 
+              hasSearched={hasSearched}
+              totalCount={jobs.length}
+            />
+          </div>
+        )}
       </main>
     </div>
   );
