@@ -21,6 +21,7 @@ class JobSerializer(serializers.Serializer):
         allow_empty=True
     )
     job_post_date = serializers.CharField(required=False, allow_blank=True)
+    job_url = serializers.URLField(required=False, allow_blank=True)
 
 
 class JobSearchSerializer(serializers.Serializer):
@@ -32,4 +33,6 @@ class JobSearchSerializer(serializers.Serializer):
     keyword = serializers.CharField(required=True, max_length=200)
     location = serializers.CharField(required=True, max_length=200)
     experience = serializers.IntegerField(required=True, min_value=0)
+    page = serializers.IntegerField(required=False, min_value=1, default=1)
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=100, default=20)
 
