@@ -938,8 +938,7 @@ class NaukriScraper:
             try:
                 # Job Title
                 h1 = soup.find('h1')
-                if h1:
-                    job_details['header_title'] = clean(h1.get_text())
+                if h1: job_details['header_title'] = clean(h1.get_text())
                 
                 # Company Name (look for 'company' in class name or first link in header)
                 comp_link = soup.find('a', class_=lambda x: x and 'company' in x.lower())
@@ -948,8 +947,7 @@ class NaukriScraper:
                     rating_star = soup.find('i', class_=lambda x: x and 'naukicon-rating' in x)
                     if rating_star:
                         comp_link = rating_star.find_parent('a')
-                if comp_link:
-                    job_details['company_title'] = clean(comp_link.get_text())
+                if comp_link: job_details['company_title'] = clean(comp_link.get_text())
                 
                 # Experience (look for calendar/exp icon or text 'years')
                 exp_icon = soup.find('i', class_=lambda x: x and 'experience' in x.lower())
@@ -973,8 +971,7 @@ class NaukriScraper:
                     text = clean(span.get_text()).lower()
                     if 'posted:' in text or 'ago' in text:
                         # Only keep if it's short (likely a date)
-                        if len(text) < 30:
-                            job_details['posted'] = clean(span.get_text())
+                        if len(text) < 30: job_details['posted'] = clean(span.get_text())
                     elif 'openings:' in text:
                         job_details['openings'] = clean(span.get_text().replace('Openings:', ''))
                     elif 'applicants:' in text:
@@ -987,11 +984,12 @@ class NaukriScraper:
                 # Priority 1: The standard 'dang-inner-html' class
                 desc_div = soup.find(class_='dang-inner-html')
                 if desc_div:
-                    job_details['job_description_content'] = clean(desc_div.get_text(separator='\n'))
+                    desc_text = clean(desc_div.get_text(separator='\n'))
                 else:
                     # Priority 2: Find header "Job description" and get the container's text
                     # We look for the text strictly to avoid false positives
                     headers = soup.find_all(lambda tag: tag.name in ['h2', 'h3', 'h4', 'div'] and tag.text and 'job description' in tag.text.lower())
+                    desc_text = ''
                     for header in headers:
                         # Ensure it's a visible header, not a hidden script
                         if header.parent.name != 'script':
@@ -1002,10 +1000,72 @@ class NaukriScraper:
                                 header_text = clean(header.get_text())
                                 # Strip header from content
                                 if full_text.lower().startswith(header_text.lower()):
-                                    job_details['job_description_content'] = full_text[len(header_text):].strip()
+                                    desc_text = full_text[len(header_text):].strip()
                                 else:
-                                    job_details['job_description_content'] = full_text
+                                    desc_text = full_text
                                 break
+                
+                # Clean description: Remove structured data sections that are extracted separately
+                if desc_text:
+                    lines = desc_text.split('\n')
+                    cleaned_lines = []
+                    skip_until_next_section = False
+                    
+                    # Patterns to identify structured data sections
+                    skip_patterns = [
+                        'role:', 'industry type:', 'department:', 'employment type:', 
+                        'role category:', 'education', 'ug:', 'pg:', 'key skills',
+                        'additional details'
+                    ]
+                    
+                    for line in lines:
+                        line_original = line
+                        line_lower = line.lower().strip()
+                        line_stripped = line.strip()
+                        
+                        # Skip empty lines if we're in skip mode
+                        if skip_until_next_section and not line_stripped:
+                            continue
+                        
+                        # Check if this line starts a section we want to skip
+                        should_skip = any(line_lower.startswith(pattern) for pattern in skip_patterns)
+                        
+                        if should_skip:
+                            skip_until_next_section = True
+                            continue
+                        
+                        # Stop skipping when we hit a new major section (usually empty line or new heading)
+                        if skip_until_next_section:
+                            # Check if it's still structured data (has colons with known patterns)
+                            if ':' in line and any(pattern in line_lower for pattern in ['role', 'industry', 'department', 'employment', 'category', 'education', 'ug', 'pg', 'key skills']):
+                                continue
+                            # If we hit a line that doesn't look like structured data, stop skipping
+                            if line_stripped and not (':' in line and len(line_stripped) < 50):
+                                skip_until_next_section = False
+                            else:
+                                continue
+                        
+                        # Skip lines that look like structured data (contain labels with colons)
+                        if ':' in line:
+                            # Check if it's a label-value pair (like "Role: Something")
+                            parts = line.split(':', 1)
+                            if len(parts) == 2:
+                                label_part = parts[0].lower().strip()
+                                if any(pattern in label_part for pattern in ['role', 'industry', 'department', 'employment', 'category', 'education', 'ug', 'pg', 'key skills', 'additional']):
+                                    continue
+                        
+                        # Skip lines that are just labels or very short structured data
+                        if len(line_stripped) < 3:
+                            continue
+                        
+                        cleaned_lines.append(line_original)
+                    
+                    # Join and clean up multiple empty lines
+                    cleaned_text = '\n'.join(cleaned_lines)
+                    # Remove multiple consecutive newlines
+                    import re
+                    cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+                    job_details['job_description_content'] = cleaned_text.strip()
             except Exception as e:
                 print(f"[SCRAPER] Error extracting description: {e}")
             
@@ -1040,16 +1100,28 @@ class NaukriScraper:
                         # Strategy A: The value is the next sibling
                         value = label.find_next_sibling()
                         if value:
-                            return clean(value.get_text())
+                            text = clean(value.get_text())
+                            # Remove label pattern from value if it's included
+                            text = text.replace(f'{label_pattern}:', '').replace(f'{label_pattern}', '').strip()
+                            # Remove trailing commas
+                            text = text.rstrip(',').strip()
+                            return text
                         
                         # Strategy B: The value is inside the parent's next sibling (common in grid layouts)
                         if label.parent:
                             next_container = label.parent.find_next_sibling()
                             if next_container:
-                                return clean(next_container.get_text())
+                                text = clean(next_container.get_text())
+                                text = text.replace(f'{label_pattern}:', '').replace(f'{label_pattern}', '').strip()
+                                text = text.rstrip(',').strip()
+                                return text
                             
                             # Strategy C: Text node immediately following the label
-                            return clean(label.next_sibling) if label.next_sibling else ''
+                            if label.next_sibling:
+                                text = clean(str(label.next_sibling))
+                                text = text.replace(f'{label_pattern}:', '').replace(f'{label_pattern}', '').strip()
+                                text = text.rstrip(',').strip()
+                                return text
                     return ''
                 
                 job_details['role'] = find_detail('Role')
@@ -1058,9 +1130,40 @@ class NaukriScraper:
                 job_details['employment_type'] = find_detail('Employment Type')
                 job_details['role_category'] = find_detail('Role Category')
                 
-                # Education often follows the same pattern or has its own section
-                job_details['ug_education'] = find_detail('UG')
-                job_details['pg_education'] = find_detail('PG')
+                # Education - look for specific education section
+                edu_section = soup.find(lambda tag: tag.text and 'education' in tag.text.lower() and tag.name in ['h2', 'h3', 'div'])
+                if edu_section:
+                    container = edu_section.find_parent('div') or edu_section.find_parent('section')
+                    if container:
+                        # Look for UG specifically
+                        ug_elem = container.find(lambda t: t.text and 'ug:' in t.text.lower() and len(t.text) < 100)
+                        if ug_elem:
+                            ug_text = clean(ug_elem.get_text())
+                            # Extract value after "UG:"
+                            if ':' in ug_text:
+                                ug_text = ug_text.split(':', 1)[1].strip()
+                            # Remove "Key Skills" if present
+                            if 'key skills' in ug_text.lower():
+                                ug_text = ug_text.split('key skills')[0].strip()
+                            job_details['ug_education'] = ug_text.rstrip(',').strip()
+                        
+                        # Look for PG specifically
+                        pg_elem = container.find(lambda t: t.text and 'pg:' in t.text.lower() and len(t.text) < 100)
+                        if pg_elem:
+                            pg_text = clean(pg_elem.get_text())
+                            # Extract value after "PG:"
+                            if ':' in pg_text:
+                                pg_text = pg_text.split(':', 1)[1].strip()
+                            # Remove "Key Skills" if present
+                            if 'key skills' in pg_text.lower():
+                                pg_text = pg_text.split('key skills')[0].strip()
+                            job_details['pg_education'] = pg_text.rstrip(',').strip()
+                
+                # Fallback to find_detail if not found in education section
+                if not job_details['ug_education']:
+                    job_details['ug_education'] = find_detail('UG')
+                if not job_details['pg_education']:
+                    job_details['pg_education'] = find_detail('PG')
             except Exception as e:
                 print(f"[SCRAPER] Error extracting other details: {e}")
             
@@ -1085,7 +1188,7 @@ class NaukriScraper:
             print(f"[SCRAPER] Extracted: Title='{job_details['header_title']}', Desc len={len(job_details['job_description_content'])}, Skills={len(job_details['key_skills'])}")
             
         except Exception as e:
-            print(f"[SCRAPER] Error scraping job details: {e}")
+            print(f"[SCRAPER] Critical error in scrape_job_details: {e}")
             import traceback
             traceback.print_exc()
         
