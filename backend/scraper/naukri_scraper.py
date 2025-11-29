@@ -41,13 +41,11 @@ class NaukriScraper:
             if os.path.exists(driver_cache_path):
                 try:
                     shutil.rmtree(driver_cache_path)
-                    print("Cleared ChromeDriver cache")
                 except Exception as e:
-                    print(f"Note: Could not clear cache: {e}")
+                    pass
             
             # Install ChromeDriver
             initial_path = ChromeDriverManager().install()
-            print(f"ChromeDriverManager returned path: {initial_path}")
             
             # ChromeDriverManager sometimes returns wrong file (like THIRD_PARTY_NOTICES.chromedriver)
             # Always search for the actual chromedriver executable
@@ -129,8 +127,6 @@ class NaukriScraper:
             if not driver_path:
                 raise Exception(f"Could not find valid chromedriver executable. Searched in: {driver_dir}")
             
-            print(f"Using chromedriver at: {driver_path}")
-            
             # Verify the driver path exists and make it executable if needed
             if not os.path.exists(driver_path):
                 raise Exception(f"ChromeDriver not found at {driver_path}")
@@ -139,9 +135,8 @@ class NaukriScraper:
             if not os.access(driver_path, os.X_OK):
                 try:
                     os.chmod(driver_path, 0o755)
-                    print(f"Made chromedriver executable: {driver_path}")
                 except Exception as e:
-                    print(f"Warning: Could not make chromedriver executable: {e}")
+                    pass
             
             # Add additional Chrome options to help with connection issues
             chrome_options.add_argument('--no-sandbox')
@@ -155,7 +150,6 @@ class NaukriScraper:
             except Exception as chrome_error:
                 # If connection fails, try with additional options
                 if 'unable to connect to renderer' in str(chrome_error).lower():
-                    print("[SCRAPER] Retrying with additional Chrome options...")
                     chrome_options.add_argument('--disable-software-rasterizer')
                     chrome_options.add_argument('--disable-extensions')
                     self.driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -165,7 +159,6 @@ class NaukriScraper:
             self.wait = WebDriverWait(self.driver, 20)
             
         except Exception as e:
-            print(f"Error initializing ChromeDriver: {e}")
             import traceback
             traceback.print_exc()
             raise Exception(f"Failed to initialize ChromeDriver. Make sure Chrome browser is installed. Error: {str(e)}")
@@ -233,7 +226,6 @@ class NaukriScraper:
             url = self.build_url(job_type, keyword, location, experience) + f"&page={page}"
         else:
             url = self.build_url(job_type, keyword, location, experience)
-        print(f"[SCRAPER] Starting web scraping for URL: {url}")
         
         metadata = {
             'source': 'scraping',
@@ -292,16 +284,13 @@ class NaukriScraper:
             
             if not container_found:
                 error_msg = "Job cards container not found - scraping failed"
-                print(f"[SCRAPER] {error_msg}")
                 metadata['debug_info']['scraping_errors'].append(error_msg)
                 # Try API fallback
-                print("[SCRAPER] Attempting API fallback due to container not found...")
                 api_jobs, api_metadata = self.scrape_jobs_via_api(job_type, keyword, location, experience, max_jobs)
                 if api_jobs and len(api_jobs) > 0:
                     metadata['source'] = 'api_fallback'
                     metadata['debug_info']['api_fallback_used'] = True
                     metadata['debug_info'].update(api_metadata.get('debug_info', {}))
-                    print(f"[SCRAPER] API fallback successful: returned {len(api_jobs)} jobs")
                     return api_jobs, metadata
                 return [], metadata
             
@@ -345,43 +334,34 @@ class NaukriScraper:
             # Mark scraping as successful if we got jobs
             if len(jobs) > 0:
                 metadata['debug_info']['scraping_success'] = True
-                print(f"[SCRAPER] Scraping successful: found {len(jobs)} jobs")
                 return jobs, metadata
             
             # If scraping returned no jobs, try API fallback
-            print("[SCRAPER] No jobs found via scraping, trying API fallback...")
             metadata['debug_info']['scraping_errors'].append("No jobs found in scraping results")
             api_jobs, api_metadata = self.scrape_jobs_via_api(job_type, keyword, location, experience, max_jobs, page)
             if api_jobs and len(api_jobs) > 0:
                 metadata['source'] = 'api_fallback'
                 metadata['debug_info']['api_fallback_used'] = True
                 metadata['debug_info'].update(api_metadata.get('debug_info', {}))
-                print(f"[SCRAPER] API fallback successful: returned {len(api_jobs)} jobs")
                 return api_jobs, metadata
-            
-            print("[SCRAPER] Both scraping and API fallback returned no jobs")
             return jobs, metadata
             
         except Exception as e:
             error_msg = f"Error scraping jobs: {str(e)}"
-            print(f"[SCRAPER] {error_msg}")
             import traceback
             traceback.print_exc()
             metadata['debug_info']['scraping_errors'].append(error_msg)
             
             # Try API as fallback even on error
             try:
-                print("[SCRAPER] Attempting API fallback after scraping error...")
                 api_jobs, api_metadata = self.scrape_jobs_via_api(job_type, keyword, location, experience, max_jobs, page)
                 if api_jobs and len(api_jobs) > 0:
                     metadata['source'] = 'api_fallback'
                     metadata['debug_info']['api_fallback_used'] = True
                     metadata['debug_info'].update(api_metadata.get('debug_info', {}))
-                    print(f"[SCRAPER] API fallback successful after error: returned {len(api_jobs)} jobs")
                     return api_jobs, metadata
             except Exception as api_error:
                 api_error_msg = f"API fallback also failed: {str(api_error)}"
-                print(f"[SCRAPER] {api_error_msg}")
                 metadata['debug_info']['api_errors'].append(api_error_msg)
             
             return [], metadata
@@ -469,7 +449,6 @@ class NaukriScraper:
         try:
             api_url = self.build_api_url(job_type, keyword, location, experience, page)
             metadata['debug_info']['api_url'] = api_url
-            print(f"[API] Attempting API request to: {api_url}")
             
             # Prepare headers - minimal set that might work
             headers = {
@@ -500,14 +479,12 @@ class NaukriScraper:
             
             response = session.get(api_url, headers=headers, timeout=10)
             metadata['debug_info']['api_status_code'] = response.status_code
-            print(f"[API] API response status code: {response.status_code}")
             
             if response.status_code == 200:
                 data = response.json()
                 no_of_jobs = data.get('noOfJobs', 0)
                 metadata['debug_info']['api_response_jobs_count'] = no_of_jobs
                 metadata['debug_info']['total_jobs_available'] = no_of_jobs
-                print(f"[API] API Response received: noOfJobs={no_of_jobs}, page={page}")
                 
                 # Try different possible field names for job data
                 job_data_list = None
@@ -522,12 +499,10 @@ class NaukriScraper:
                     jobs = self._parse_api_job_data(job_data_list, max_jobs)
                     if jobs:
                         metadata['debug_info']['api_success'] = True
-                        print(f"[API] API successfully parsed {len(jobs)} jobs")
                         return jobs, metadata
                 
                 # If noOfJobs > 0 but no job data found, try parsing the entire response
                 if no_of_jobs > 0:
-                    print(f"API indicates {no_of_jobs} jobs but job data not found in expected fields")
                     # Try to extract from any array in the response
                     if isinstance(data, dict):
                         for key, value in data.items():
@@ -537,20 +512,16 @@ class NaukriScraper:
                                     jobs = self._parse_api_job_data(value, max_jobs)
                                     if jobs:
                                         metadata['debug_info']['api_success'] = True
-                                        print(f"[API] API successfully parsed {len(jobs)} jobs from alternative structure")
                                         return jobs, metadata
                 
-                print("[API] API returned no job data in response")
                 return [], metadata
             else:
                 error_msg = f"API request failed with status {response.status_code}"
-                print(f"[API] {error_msg}: {response.text[:200]}")
                 metadata['debug_info']['api_errors'] = [error_msg]
                 return [], metadata
                 
         except Exception as e:
             error_msg = f"Error in API scraping: {str(e)}"
-            print(f"[API] {error_msg}")
             import traceback
             traceback.print_exc()
             metadata['debug_info']['api_errors'] = [error_msg]
@@ -673,7 +644,7 @@ class NaukriScraper:
                     jobs.append(job_data)
                     
             except Exception as e:
-                print(f"Error parsing API job data: {e}")
+                pass
                 continue
         
         return jobs
@@ -864,7 +835,7 @@ class NaukriScraper:
                     pass
             
         except Exception as e:
-            print(f"Error extracting job data for card {card_index}: {e}")
+            pass
         
         return job_data
     
@@ -914,7 +885,6 @@ class NaukriScraper:
         }
         
         try:
-            print(f"[SCRAPER] Scraping job details from: {job_url}")
             self.driver.get(job_url)
             
             # Wait for basic page load
@@ -977,7 +947,7 @@ class NaukriScraper:
                     elif 'applicants:' in text:
                         job_details['applicants'] = clean(span.get_text().replace('Applicants:', ''))
             except Exception as e:
-                print(f"[SCRAPER] Error extracting header info: {e}")
+                pass
             
             # 2. Job Description (The most critical part)
             try:
@@ -1067,7 +1037,7 @@ class NaukriScraper:
                     cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
                     job_details['job_description_content'] = cleaned_text.strip()
             except Exception as e:
-                print(f"[SCRAPER] Error extracting description: {e}")
+                pass
             
             # 3. Key Skills
             try:
@@ -1089,7 +1059,7 @@ class NaukriScraper:
                                 skills.append(txt)
                         job_details['key_skills'] = list(set(skills))  # Remove duplicates
             except Exception as e:
-                print(f"[SCRAPER] Error extracting skills: {e}")
+                pass
             
             # 4. Other Details (Role, Industry, etc.) via Label Search
             try:
@@ -1165,7 +1135,7 @@ class NaukriScraper:
                 if not job_details['pg_education']:
                     job_details['pg_education'] = find_detail('PG')
             except Exception as e:
-                print(f"[SCRAPER] Error extracting other details: {e}")
+                pass
             
             # 5. About Company
             try:
@@ -1182,13 +1152,9 @@ class NaukriScraper:
                         else:
                             job_details['about_company_description'] = full_text
             except Exception as e:
-                print(f"[SCRAPER] Error extracting about company: {e}")
-            
-            # Debug print
-            print(f"[SCRAPER] Extracted: Title='{job_details['header_title']}', Desc len={len(job_details['job_description_content'])}, Skills={len(job_details['key_skills'])}")
+                pass
             
         except Exception as e:
-            print(f"[SCRAPER] Critical error in scrape_job_details: {e}")
             import traceback
             traceback.print_exc()
         

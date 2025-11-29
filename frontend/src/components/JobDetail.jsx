@@ -53,7 +53,7 @@ const JobDetail = () => {
         setSearchState(parsedState);
       }
     } catch (err) {
-      console.error('Error loading related jobs from sessionStorage:', err);
+      // Error loading related jobs from sessionStorage
     }
   }, [location]);
 
@@ -103,7 +103,6 @@ const JobDetail = () => {
         const data = await getJobDetails(decodedUrl);
         
         if (data.success) {
-          console.log('[JobDetail] Received job details:', data.job_details);
           setJobDetails(data.job_details);
         } else {
           setError(data.message || data.error || 'Failed to load job details');
@@ -212,22 +211,6 @@ const JobDetail = () => {
 
   const decodedJobUrl = jobUrl ? decodeURIComponent(jobUrl) : null;
 
-  // Debug: Log what we have
-  if (jobDetails) {
-    console.log('[JobDetail] Rendering with data:', {
-      hasHeaderTitle: !!jobDetails.header_title,
-      hasCompanyTitle: !!jobDetails.company_title,
-      hasCompanyLogo: !!jobDetails.company_logo,
-      hasRating: !!jobDetails.rating,
-      hasReviews: !!jobDetails.reviews,
-      hasExperience: !!jobDetails.experience,
-      hasSalary: !!jobDetails.salary,
-      hasLocation: !!jobDetails.location,
-      hasDescription: !!jobDetails.job_description_content,
-      hasSkills: !!jobDetails.key_skills && jobDetails.key_skills.length > 0,
-      allKeys: Object.keys(jobDetails)
-    });
-  }
 
   return (
     <div className="job-detail-wrapper">
@@ -344,8 +327,9 @@ const JobDetail = () => {
               )}
             </div>
           </div>
+          )}
 
-      {jobDetails.job_highlights && (jobDetails.job_highlights.title || (jobDetails.job_highlights.items && jobDetails.job_highlights.items.length > 0)) && (
+          {jobDetails.job_highlights && (jobDetails.job_highlights.title || (jobDetails.job_highlights.items && jobDetails.job_highlights.items.length > 0)) && (
         <div className="job-detail-section">
           <h2 className="section-title">
             {jobDetails.job_highlights.title || 'Job Highlights'}

@@ -59,7 +59,7 @@ const JobsPage = () => {
         setSearchParams(parsedState.searchParams || null);
       }
     } catch (err) {
-      console.error('Error restoring state from sessionStorage:', err);
+      // Error restoring state from sessionStorage
     }
   }, [location]);
 
@@ -87,7 +87,7 @@ const JobsPage = () => {
       try {
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
       } catch (err) {
-        console.error('Error saving state to sessionStorage:', err);
+        // Error saving state to sessionStorage
       }
     }
   }, [jobs, hasSearched, filters, currentPage, pagination, searchParams]);
@@ -106,7 +106,7 @@ const JobsPage = () => {
       try {
         sessionStorage.removeItem(STORAGE_KEY);
       } catch (err) {
-        console.error('Error clearing sessionStorage:', err);
+        // Error clearing sessionStorage
       }
     }
     
