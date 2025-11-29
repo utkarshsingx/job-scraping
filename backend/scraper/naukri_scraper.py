@@ -894,7 +894,7 @@ class NaukriScraper:
             'internship_label': '',
             'job_highlights': {'title': '', 'items': []},
             'job_match_score': '',
-            'job_description_header': '',
+            'job_description_header': 'Job Description',
             'job_description_content': '',
             'job_description_div': '',
             'role_and_responsibilities': {'title': '', 'items': []},
@@ -917,530 +917,172 @@ class NaukriScraper:
             print(f"[SCRAPER] Scraping job details from: {job_url}")
             self.driver.get(job_url)
             
-            # Wait for page to be interactive
+            # Wait for basic page load
             try:
                 WebDriverWait(self.driver, 10).until(
                     lambda driver: driver.execute_script('return document.readyState') == 'complete'
                 )
-                print("[SCRAPER] Page loaded (document.readyState = complete)")
-            except:
-                print("[SCRAPER] Warning: Page readyState check timeout")
-            
-            time.sleep(5)  # Additional wait for dynamic content
-            
-            # Check page title for debugging
-            try:
-                page_title = self.driver.title
-                print(f"[SCRAPER] Page title: {page_title}")
-                current_url = self.driver.current_url
-                print(f"[SCRAPER] Current URL: {current_url}")
             except:
                 pass
             
-            # Handle popups
+            time.sleep(3)  # Allow dynamic content (React/Angular) to render
+            
+            # --- USE BEAUTIFULSOUP FOR ROBUST PARSING ---
+            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+            
+            # Helper to safely clean text
+            def clean(text):
+                return text.strip() if text else ''
+            
+            # 1. Header Information (Title, Company, Exp, Loc)
             try:
-                popup_selectors = [
-                    "//button[contains(text(), 'Close')]",
-                    "//button[contains(text(), 'Skip')]",
-                    "//span[contains(@class, 'close')]",
-                    "//div[contains(@class, 'closeIcon')]"
-                ]
-                for selector in popup_selectors:
-                    try:
-                        popup = self.driver.find_element(By.XPATH, selector)
-                        if popup and popup.is_displayed():
-                            popup.click()
-                            time.sleep(1)
-                            break
-                    except:
-                        continue
-            except:
-                pass
-            
-            # Wait for main content to load - try multiple XPath options
-            content_found = False
-            content_xpaths = [
-                "/html/body/div[1]/div/main/div[1]/div[1]/section[1]",
-                "//section[contains(@class, 'job')]",
-                "//main//section[1]",
-                "//h1",  # Just wait for header title
-            ]
-            
-            for xpath in content_xpaths:
-                try:
-                    self.wait.until(
-                        EC.presence_of_element_located((By.XPATH, xpath))
-                    )
-                    content_found = True
-                    print(f"[SCRAPER] Found content using XPath: {xpath}")
-                    break
-                except:
-                    continue
-            
-            if not content_found:
-                print("[SCRAPER] Warning: Main content section not found, but continuing with extraction...")
-                time.sleep(3)  # Extra wait in case content is still loading
-                # Debug: Check page source snippet
-                try:
-                    page_source_preview = self.driver.page_source[:1000]
-                    print(f"[SCRAPER] Page source preview (first 1000 chars): {page_source_preview}")
-                except:
-                    pass
-            
-            # Debug: Try to find any h1 on the page
-            try:
-                all_h1s = self.driver.find_elements(By.XPATH, "//h1")
-                print(f"[SCRAPER] Found {len(all_h1s)} h1 elements on page")
-                for i, h1 in enumerate(all_h1s[:3]):  # Show first 3
-                    try:
-                        print(f"[SCRAPER] H1 #{i+1}: {h1.text.strip()[:100]}")
-                    except:
-                        pass
-            except:
-                pass
-            
-            # Extract header title - try multiple XPaths
-            try:
-                header_title = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[1]/header/h1")
-                job_details['header_title'] = header_title.text.strip()
-            except:
-                try:
-                    # Try alternative: just find h1 in main
-                    header_title = self.driver.find_element(By.XPATH, "//main//h1")
-                    job_details['header_title'] = header_title.text.strip()
-                    print(f"[SCRAPER] Found header title using alternative XPath")
-                except:
-                    try:
-                        header_title = self.driver.find_element(By.XPATH, "//h1")
-                        job_details['header_title'] = header_title.text.strip()
-                        print(f"[SCRAPER] Found header title using simple h1")
-                    except:
-                        print("[SCRAPER] Could not find header title with XPath, trying BeautifulSoup...")
-                        # Try using BeautifulSoup as fallback
-                        try:
-                            # Guard against invalid WebDriver session when accessing page_source
-                            page_source = self.driver.page_source
-                            soup = BeautifulSoup(page_source, 'html.parser')
-                            h1_tag = soup.find('h1')
-                            if h1_tag:
-                                job_details['header_title'] = h1_tag.get_text(strip=True)
-                                print(f"[SCRAPER] Found header title using BeautifulSoup: {job_details['header_title'][:80]}")
-                        except Exception as bs_error:
-                            msg = str(bs_error)
-                            # Selenium's WebDriverException includes a very long chromedriver stacktrace;
-                            # collapse that to a short, readable message.
-                            if 'invalid session id' in msg.lower():
-                                print("[SCRAPER] BeautifulSoup fallback failed: WebDriver session is no longer valid")
-                            else:
-                                first_line = msg.splitlines()[0] if msg else repr(bs_error)
-                                print(f"[SCRAPER] BeautifulSoup fallback failed: {first_line}")
-                        pass
-            
-            # Extract company title - try multiple XPaths
-            try:
-                company_title = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[1]/div/a")
-                job_details['company_title'] = company_title.text.strip()
-            except:
-                try:
-                    company_title = self.driver.find_element(By.XPATH, "//section[1]//a[contains(@href, 'company')]")
-                    job_details['company_title'] = company_title.text.strip()
-                except:
-                    pass
-            
-            # Extract company logo - try multiple XPaths
-            try:
-                company_logo = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/a/img")
-                job_details['company_logo'] = company_logo.get_attribute('src') or ''
-            except:
-                try:
-                    company_logo = self.driver.find_element(By.XPATH, "//section[1]//img[contains(@alt, 'company') or contains(@src, 'logo')]")
-                    job_details['company_logo'] = company_logo.get_attribute('src') or ''
-                except:
-                    pass
-            
-            # Extract rating
-            try:
-                rating = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[1]/div/div/a/span[1]")
-                job_details['rating'] = rating.text.strip()
-            except:
-                pass
-            
-            # Extract reviews
-            try:
-                reviews = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[1]/div/div/a/span[2]")
-                job_details['reviews'] = reviews.text.strip()
-            except:
-                pass
-            
-            # Extract experience
-            try:
-                experience = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[2]/div[1]/div[1]/span")
-                job_details['experience'] = experience.text.strip()
-            except:
-                pass
-            
-            # Extract salary
-            try:
-                salary = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[2]/div[5]/div/div[1]/div/div[3]/div/span[2]/span/span")
-                job_details['salary'] = salary.text.strip()
-            except:
-                pass
-            
-            # Extract location
-            try:
-                location = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[2]/div[2]/span")
-                job_details['location'] = location.text.strip()
-            except:
-                pass
-            
-            # Extract posted date
-            try:
-                posted = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[2]/div[1]/span[1]/span")
-                job_details['posted'] = posted.text.strip()
-            except:
-                pass
-            
-            # Extract openings
-            try:
-                openings = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[2]/div[1]/span[2]/span")
-                job_details['openings'] = openings.text.strip()
-            except:
-                pass
-            
-            # Extract applicants
-            try:
-                applicants = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[2]/div[1]/span[3]/span")
-                job_details['applicants'] = applicants.text.strip()
-            except:
-                pass
-            
-            # Extract apply button text
-            try:
-                apply_button = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[2]/div[2]/button[2]")
-                job_details['apply_button_text'] = apply_button.text.strip()
-            except:
-                pass
-            
-            # Extract internship label
-            try:
-                internship_label = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[2]/div[4]/p")
-                job_details['internship_label'] = internship_label.text.strip()
-            except:
-                pass
-            
-            # Extract job highlights
-            try:
-                highlights_title = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[1]/div[1]/span")
-                job_details['job_highlights']['title'] = highlights_title.text.strip()
-            except:
-                pass
-            
-            try:
-                highlights_list = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[1]/div[1]/ul")
-                highlight_items = highlights_list.find_elements(By.XPATH, "./li")
-                job_details['job_highlights']['items'] = [item.text.strip() for item in highlight_items if item.text.strip()]
-            except:
-                try:
-                    # Try finding all li elements directly
-                    highlight_items = self.driver.find_elements(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[1]/div[1]/ul/li")
-                    job_details['job_highlights']['items'] = [item.text.strip() for item in highlight_items if item.text.strip()]
-                except:
-                    pass
-            
-            # Extract job match score
-            try:
-                match_score = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[1]/div[2]/span")
-                job_details['job_match_score'] = match_score.text.strip()
-            except:
-                pass
-            
-            # --- ROBUST EXTRACTION USING BEAUTIFULSOUP ---
-            # Parse the entire page once and use it for all deep details
-            try:
-                page_source = self.driver.page_source
-                soup = BeautifulSoup(page_source, 'html.parser')
-            except Exception as e:
-                msg = str(e)
-                if 'invalid session id' in msg.lower():
-                    print("[SCRAPER] BeautifulSoup parsing failed: WebDriver session is no longer valid")
-                    soup = None
-                else:
-                    first_line = msg.splitlines()[0] if msg else repr(e)
-                    print(f"[SCRAPER] BeautifulSoup parsing failed: {first_line}")
-                    soup = None
-            
-            if soup:
-                # 1. Basic Header Info (Title, Company, Exp, Loc)
-                try:
-                    # Job Title - usually the first H1
-                    h1 = soup.find('h1')
-                    if h1:
-                        job_details['header_title'] = h1.get_text(strip=True)
-                    
-                    # Company Name - look for class 'company-name' or first link in info section
-                    comp_link = soup.find('a', class_='job-company-name') or soup.find('a', class_='company-name')
-                    if not comp_link:
-                        # Fallback: Find first link in the top section
-                        header_sec = soup.find('section')
-                        if header_sec:
-                            comp_link = header_sec.find('a', href=True)
-                    if comp_link:
-                        job_details['company_title'] = comp_link.get_text(strip=True)
-                    
-                    # Experience - Look for specific icon class or text pattern
-                    exp_icon = soup.find('i', class_='naukicon-naukicon-experience')
-                    if exp_icon and exp_icon.parent:
-                        job_details['experience'] = exp_icon.parent.get_text(strip=True)
-                    else:
-                        # Text fallback
-                        exp_span = soup.find(lambda tag: tag.name == 'span' and tag.text and ('years' in tag.text.lower() or 'yrs' in tag.text.lower()))
-                        if exp_span:
-                            job_details['experience'] = exp_span.get_text(strip=True)
-                    
-                    # Salary
-                    sal_icon = soup.find('i', class_='naukicon-naukicon-salary')
-                    if sal_icon and sal_icon.parent:
-                        job_details['salary'] = sal_icon.parent.get_text(strip=True)
-                    
-                    # Location
-                    loc_icon = soup.find('i', class_='naukicon-naukicon-location')
-                    if loc_icon and loc_icon.parent:
-                        job_details['location'] = loc_icon.parent.get_text(strip=True)
-                except Exception as e:
-                    print(f"[SCRAPER] Error extracting basic headers: {e}")
+                # Job Title
+                h1 = soup.find('h1')
+                if h1:
+                    job_details['header_title'] = clean(h1.get_text())
                 
-                # 2. JOB DESCRIPTION (Priority Fix)
-                # Strategy: Look for the specific class Naukri uses for rich text
-                try:
-                    # 'dang-inner-html' is the standard class for the description container
-                    content_div = soup.find(class_='dang-inner-html')
-                    if content_div:
-                        job_details['job_description_content'] = content_div.get_text(separator='\n').strip()
-                    else:
-                        # Fallback: Find header "Job description" and get parent text
-                        desc_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'job description' in tag.text.lower())
-                        if desc_header:
-                            job_details['job_description_header'] = desc_header.get_text(strip=True)
-                            section = desc_header.find_parent('section') or desc_header.find_parent('div')
+                # Company Name (look for 'company' in class name or first link in header)
+                comp_link = soup.find('a', class_=lambda x: x and 'company' in x.lower())
+                if not comp_link:
+                    # Fallback: Look for the rating star's parent/sibling which usually holds the company name
+                    rating_star = soup.find('i', class_=lambda x: x and 'naukicon-rating' in x)
+                    if rating_star:
+                        comp_link = rating_star.find_parent('a')
+                if comp_link:
+                    job_details['company_title'] = clean(comp_link.get_text())
+                
+                # Experience (look for calendar/exp icon or text 'years')
+                exp_icon = soup.find('i', class_=lambda x: x and 'experience' in x.lower())
+                if exp_icon and exp_icon.parent:
+                    job_details['experience'] = clean(exp_icon.parent.get_text())
+                
+                # Location (look for location icon)
+                loc_icon = soup.find('i', class_=lambda x: x and 'location' in x.lower())
+                if loc_icon and loc_icon.parent:
+                    job_details['location'] = clean(loc_icon.parent.get_text())
+                    
+                # Salary (look for salary icon)
+                sal_icon = soup.find('i', class_=lambda x: x and 'salary' in x.lower())
+                if sal_icon and sal_icon.parent:
+                    job_details['salary'] = clean(sal_icon.parent.get_text())
+                
+                # Stats (Posted, Openings, Applicants)
+                # Look for spans containing specific keywords
+                all_spans = soup.find_all('span')
+                for span in all_spans:
+                    text = clean(span.get_text()).lower()
+                    if 'posted:' in text or 'ago' in text:
+                        # Only keep if it's short (likely a date)
+                        if len(text) < 30:
+                            job_details['posted'] = clean(span.get_text())
+                    elif 'openings:' in text:
+                        job_details['openings'] = clean(span.get_text().replace('Openings:', ''))
+                    elif 'applicants:' in text:
+                        job_details['applicants'] = clean(span.get_text().replace('Applicants:', ''))
+            except Exception as e:
+                print(f"[SCRAPER] Error extracting header info: {e}")
+            
+            # 2. Job Description (The most critical part)
+            try:
+                # Priority 1: The standard 'dang-inner-html' class
+                desc_div = soup.find(class_='dang-inner-html')
+                if desc_div:
+                    job_details['job_description_content'] = clean(desc_div.get_text(separator='\n'))
+                else:
+                    # Priority 2: Find header "Job description" and get the container's text
+                    # We look for the text strictly to avoid false positives
+                    headers = soup.find_all(lambda tag: tag.name in ['h2', 'h3', 'h4', 'div'] and tag.text and 'job description' in tag.text.lower())
+                    for header in headers:
+                        # Ensure it's a visible header, not a hidden script
+                        if header.parent.name != 'script':
+                            # Get the section containing this header
+                            section = header.find_parent('section') or header.find_parent('div', class_=lambda x: x and 'job-desc' in x)
                             if section:
-                                full_text = section.get_text(separator='\n').strip()
-                                # Try to clean up the header text from the result
-                                header_text = desc_header.get_text(strip=True)
+                                full_text = clean(section.get_text(separator='\n'))
+                                header_text = clean(header.get_text())
+                                # Strip header from content
                                 if full_text.lower().startswith(header_text.lower()):
                                     job_details['job_description_content'] = full_text[len(header_text):].strip()
                                 else:
                                     job_details['job_description_content'] = full_text
-                except Exception as e:
-                    print(f"[SCRAPER] Error extracting description: {e}")
+                                break
+            except Exception as e:
+                print(f"[SCRAPER] Error extracting description: {e}")
             
-            # Extract role and responsibilities
+            # 3. Key Skills
             try:
-                role_resp_title = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[1]/p/strong")
-                job_details['role_and_responsibilities']['title'] = role_resp_title.text.strip()
-            except:
-                pass
+                # Find "Key Skills" header
+                skills_header = soup.find(lambda tag: tag.text and 'key skills' in tag.text.lower() and tag.name in ['h2', 'div', 'span'])
+                if skills_header:
+                    # Look at siblings or parent's siblings
+                    # Skills are usually links (a) or spans with specific styling
+                    container = skills_header.find_parent('div') or skills_header.find_parent('section')
+                    if container:
+                        # Extract all text from 'a' tags or 'span' tags that seem like pills
+                        # Heuristic: Short text, not the header itself
+                        candidates = container.find_all(['a', 'span'])
+                        skills = []
+                        for tag in candidates:
+                            txt = clean(tag.get_text())
+                            # Filter noise: Exclude empty, header text, and "suggested" labels
+                            if txt and len(txt) < 40 and 'key skills' not in txt.lower() and 'suggested' not in txt.lower():
+                                skills.append(txt)
+                        job_details['key_skills'] = list(set(skills))  # Remove duplicates
+            except Exception as e:
+                print(f"[SCRAPER] Error extracting skills: {e}")
             
+            # 4. Other Details (Role, Industry, etc.) via Label Search
             try:
-                role_resp_list = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[1]/ul")
-                role_resp_items = role_resp_list.find_elements(By.XPATH, "./li")
-                job_details['role_and_responsibilities']['items'] = [item.text.strip() for item in role_resp_items if item.text.strip()]
-            except:
-                try:
-                    # Try finding all li elements directly
-                    role_resp_items = self.driver.find_elements(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[1]/ul/li")
-                    job_details['role_and_responsibilities']['items'] = [item.text.strip() for item in role_resp_items if item.text.strip()]
-                except:
-                    pass
-            
-            # Extract additional role and responsibilities div content
-            try:
-                role_resp_div = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[2]")
-                # Extract all div content within
-                div_content = role_resp_div.text.strip()
-                if div_content:
-                    # Split by lines and filter empty
-                    lines = [line.strip() for line in div_content.split('\n') if line.strip()]
-                    # Add to items if not already included
-                    existing_items = set(job_details['role_and_responsibilities']['items'])
-                    for line in lines:
-                        if line and line not in existing_items:
-                            job_details['role_and_responsibilities']['items'].append(line)
-            except:
-                pass
-            
-                # 3. DETAILS (Role, Industry, Functional Area)
-                # Strategy: Find the text label, then traverse up to find the value pair
-                try:
-                    def extract_field_by_label(labels):
-                        for label_text in labels:
-                            # Find any element containing exactly this text (or close to it)
-                            label_elem = soup.find(lambda tag: tag.text and tag.text.strip().lower() == label_text.lower())
-                            if label_elem:
-                                # Usually the structure is Label -> Sibling Value OR Parent -> Label + Value
-                                # Check next sibling first
-                                value = label_elem.find_next_sibling()
-                                if value:
-                                    return value.get_text(strip=True)
-                                
-                                # Check parent's next sibling (common in grid layouts)
-                                if label_elem.parent:
-                                    value = label_elem.parent.find_next_sibling()
-                                    if value:
-                                        return value.get_text(strip=True)
-                        return ''
-                    
-                    job_details['role'] = extract_field_by_label(['Role', 'Role Category'])
-                    job_details['industry_type'] = extract_field_by_label(['Industry', 'Industry Type'])
-                    job_details['department'] = extract_field_by_label(['Department', 'Functional Area'])
-                    job_details['employment_type'] = extract_field_by_label(['Employment Type'])
-                    job_details['role_category'] = extract_field_by_label(['Role Category'])
-                    
-                except Exception as e:
-                    print(f"[SCRAPER] Error extracting other details: {e}")
-                
-                # 4. EDUCATION
-                try:
-                    # Naukri often groups education under an "Education" section
-                    edu_section = soup.find(lambda tag: tag.text and 'Education' in tag.text and tag.name in ['h2', 'h3', 'div'])
-                    if edu_section:
-                        job_details['education_title'] = edu_section.get_text(strip=True)
-                        # Look for UG and PG text nearby
-                        container = edu_section.find_parent('div') or edu_section.find_parent('section')
-                        if container:
-                            ug_label = container.find(lambda t: t.text and 'UG' in t.text)
-                            if ug_label:
-                                job_details['ug_education'] = ug_label.find_next_sibling().get_text(strip=True) if ug_label.find_next_sibling() else ug_label.parent.get_text(strip=True)
+                def find_detail(label_pattern):
+                    # Find a label containing the text (e.g. "Role:")
+                    label = soup.find(lambda tag: tag.text and label_pattern.lower() in tag.text.lower() and len(tag.text) < 50)
+                    if label:
+                        # Strategy A: The value is the next sibling
+                        value = label.find_next_sibling()
+                        if value:
+                            return clean(value.get_text())
+                        
+                        # Strategy B: The value is inside the parent's next sibling (common in grid layouts)
+                        if label.parent:
+                            next_container = label.parent.find_next_sibling()
+                            if next_container:
+                                return clean(next_container.get_text())
                             
-                            pg_label = container.find(lambda t: t.text and 'PG' in t.text)
-                            if pg_label:
-                                job_details['pg_education'] = pg_label.find_next_sibling().get_text(strip=True) if pg_label.find_next_sibling() else pg_label.parent.get_text(strip=True)
-                except Exception as e:
-                    print(f"[SCRAPER] Error extracting education: {e}")
+                            # Strategy C: Text node immediately following the label
+                            return clean(label.next_sibling) if label.next_sibling else ''
+                    return ''
                 
-                # 5. KEY SKILLS
-                try:
-                    # Find the "Key Skills" header
-                    skills_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'key skills' in tag.text.lower())
-                    if skills_header:
-                        # Get the container section
-                        skills_container = skills_header.find_parent('section') or skills_header.find_parent('div')
-                        if skills_container:
-                            # Skills are typically links (a) or spans inside a specific chip container
-                            # We gather ALL links/spans that aren't the header itself
-                            potential_skills = skills_container.find_all(['a', 'span'])
-                            skills = []
-                            for tag in potential_skills:
-                                text = tag.get_text(strip=True)
-                                # Heuristic: Skills are usually short (less than 40 chars) and not the header text
-                                if 1 < len(text) < 40 and 'key skills' not in text.lower() and 'suggested' not in text.lower():
-                                    skills.append(text)
-                            
-                            # Dedup and save
-                            job_details['key_skills'] = list(set(skills))
-                except Exception as e:
-                    print(f"[SCRAPER] Error extracting skills: {e}")
+                job_details['role'] = find_detail('Role')
+                job_details['industry_type'] = find_detail('Industry Type')
+                job_details['department'] = find_detail('Department')
+                job_details['employment_type'] = find_detail('Employment Type')
+                job_details['role_category'] = find_detail('Role Category')
+                
+                # Education often follows the same pattern or has its own section
+                job_details['ug_education'] = find_detail('UG')
+                job_details['pg_education'] = find_detail('PG')
+            except Exception as e:
+                print(f"[SCRAPER] Error extracting other details: {e}")
             
-            # Extract about company header
+            # 5. About Company
             try:
-                about_header = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[3]/header/h2")
-                job_details['about_company_header'] = about_header.text.strip()
-            except:
-                pass
+                # Look for header "About Company"
+                about_header = soup.find(lambda tag: tag.text and 'about company' in tag.text.lower() and tag.name in ['h2', 'div'])
+                if about_header:
+                    # The description is usually text inside the parent container
+                    container = about_header.find_parent('div')
+                    if container:
+                        full_text = clean(container.get_text(separator='\n'))
+                        header_text = clean(about_header.get_text())
+                        if full_text.lower().startswith(header_text.lower()):
+                            job_details['about_company_description'] = full_text[len(header_text):].strip()
+                        else:
+                            job_details['about_company_description'] = full_text
+            except Exception as e:
+                print(f"[SCRAPER] Error extracting about company: {e}")
             
-            # Extract company info header
-            try:
-                company_info_header = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[3]/div[2]")
-                job_details['company_info_header'] = company_info_header.text.strip()
-            except:
-                pass
-            
-            # Extract company address
-            try:
-                address_label = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[3]/div[3]/label")
-                job_details['company_address']['label'] = address_label.text.strip()
-            except:
-                pass
-            
-            try:
-                address_span = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[3]/div[3]/span")
-                job_details['company_address']['address'] = address_span.text.strip()
-            except:
-                pass
-            
-                # 6. ABOUT COMPANY
-                try:
-                    about_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'about company' in tag.text.lower())
-                    if about_header:
-                        job_details['about_company_header'] = about_header.get_text(strip=True)
-                        container = about_header.find_parent('div')
-                        if container:
-                            full_text = container.get_text(separator='\n').strip()
-                            # Simple cleanup: remove the header text from the start
-                            header_text = about_header.get_text(strip=True)
-                            if full_text.lower().startswith(header_text.lower()):
-                                job_details['about_company_description'] = full_text[len(header_text):].strip()
-                            else:
-                                # Sometimes the text is in a sibling div
-                                sibling = about_header.find_next_sibling('div')
-                                if sibling:
-                                    job_details['about_company_description'] = sibling.get_text(strip=True)
-                except Exception as e:
-                    print(f"[SCRAPER] Error extracting company info: {e}")
-            
-            # Debug Summary
-            print(f"[SCRAPER] Extraction Summary:")
-            print(f"   - Title: {job_details['header_title']}")
-            print(f"   - Desc Length: {len(job_details.get('job_description_content', ''))}")
-            print(f"   - Skills Found: {len(job_details.get('key_skills', []))}")
-            
-            # Debug: Print summary of scraped fields
-            def has_value(v):
-                """Check if a value has actual content"""
-                if isinstance(v, dict):
-                    return any(has_value(val) for val in v.values())
-                elif isinstance(v, list):
-                    return len(v) > 0
-                elif isinstance(v, str):
-                    return bool(v.strip())
-                return bool(v)
-            
-            non_empty_fields = {k: v for k, v in job_details.items() if has_value(v)}
-            empty_fields = [k for k, v in job_details.items() if not has_value(v)]
-            
-            print(f"\n[SCRAPER] === Job Details Scraping Summary ===")
-            print(f"[SCRAPER] Successfully scraped: {len(non_empty_fields)}/{len(job_details)} fields")
-            print(f"[SCRAPER] Fields found: {', '.join(non_empty_fields.keys())}")
-            if empty_fields:
-                print(f"[SCRAPER] Fields not found ({len(empty_fields)}): {', '.join(empty_fields[:10])}")
-                if len(empty_fields) > 10:
-                    print(f"[SCRAPER] ... and {len(empty_fields) - 10} more")
-            
-            # Show structured fields detail
-            structured_fields = ['job_highlights', 'role_and_responsibilities', 'company_address']
-            for field in structured_fields:
-                value = job_details.get(field, {})
-                if isinstance(value, dict) and has_value(value):
-                    if field == 'job_highlights':
-                        items_count = len(value.get('items', []))
-                        print(f"[SCRAPER] {field}: title='{value.get('title', '')[:50]}', {items_count} items")
-                    elif field == 'role_and_responsibilities':
-                        items_count = len(value.get('items', []))
-                        print(f"[SCRAPER] {field}: title='{value.get('title', '')[:50]}', {items_count} items")
-                    elif field == 'company_address':
-                        print(f"[SCRAPER] {field}: label='{value.get('label', '')[:30]}', address='{value.get('address', '')[:50]}'")
-            
-            title_found = job_details.get('header_title', '').strip()
-            if title_found:
-                print(f"[SCRAPER] Job Title: {title_found}")
-            else:
-                print(f"[SCRAPER] WARNING: No job title found!")
-                # Print page title as debug
-                try:
-                    page_title = self.driver.title
-                    print(f"[SCRAPER] Page title: {page_title}")
-                except:
-                    pass
-            print(f"[SCRAPER] ======================================\n")
+            # Debug print
+            print(f"[SCRAPER] Extracted: Title='{job_details['header_title']}', Desc len={len(job_details['job_description_content'])}, Skills={len(job_details['key_skills'])}")
             
         except Exception as e:
             print(f"[SCRAPER] Error scraping job details: {e}")
