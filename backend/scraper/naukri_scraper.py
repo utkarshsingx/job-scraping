@@ -1115,52 +1115,77 @@ class NaukriScraper:
             except:
                 pass
             
-            # Extract job description header
+            # --- START OF IMPROVED JOB DESCRIPTION EXTRACTION ---
+            # Improved Job Description Extraction using BeautifulSoup
+            
             try:
-                job_desc_header = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[2]/h2")
-                job_details['job_description_header'] = job_desc_header.text.strip()
-            except:
-                pass
+                # 1. Parse the current page content
+                page_source = self.driver.page_source
+                soup = BeautifulSoup(page_source, 'html.parser')
+                
+                # 2. Find the "Job description" header (it's usually an H2 or H3)
+                # We use a lambda to find it case-insensitively and loosely
+                desc_header = soup.find(lambda tag: tag.name in ['h2', 'h3'] and tag.text and 'Job description' in tag.text.lower())
+                
+                if desc_header:
+                    # Extract header text
+                    job_details['job_description_header'] = desc_header.get_text(strip=True)
+                    print(f"[SCRAPER] Found job description header: {job_details['job_description_header']}")
+                    
+                    # 3. The content is usually in the sibling <div> or parent <section>
+                    # Strategy A: Check for the standard 'dang-inner-html' class often used by Naukri
+                    content_div = desc_header.find_next('div', class_='dang-inner-html')
+                    
+                    # Strategy B: If A fails, look for next sibling div with content
+                    if not content_div:
+                        # Try to find the next div sibling
+                        next_sibling = desc_header.find_next_sibling('div')
+                        if next_sibling:
+                            content_div = next_sibling
+                    
+                    # Strategy C: If B fails, just grab the section that contains this header
+                    if not content_div:
+                        section = desc_header.find_parent('section')
+                        if section:
+                            # Remove the header text from the section text so we don't duplicate it
+                            text = section.get_text(separator='\n').strip()
+                            header_text = desc_header.get_text().strip()
+                            if text.startswith(header_text):
+                                text = text[len(header_text):].strip()
+                            job_details['job_description_content'] = text
+                            print(f"[SCRAPER] Extracted description using section method (length: {len(job_details['job_description_content'])})")
+                    else:
+                        job_details['job_description_content'] = content_div.get_text(separator='\n').strip()
+                        print(f"[SCRAPER] Extracted description using BeautifulSoup (length: {len(job_details['job_description_content'])})")
+                else:
+                    # Fallback: Try to find any div with job description content
+                    print("[SCRAPER] Job description header not found, trying fallback methods...")
+                    # Look for divs with common job description classes or content
+                    desc_candidates = soup.find_all('div', class_=lambda x: x and ('description' in x.lower() or 'job' in x.lower()))
+                    for candidate in desc_candidates:
+                        text = candidate.get_text(separator='\n').strip()
+                        if len(text) > 100:  # Likely a real description if it's substantial
+                            job_details['job_description_content'] = text
+                            print(f"[SCRAPER] Extracted description using fallback method (length: {len(text)})")
+                            break
+                            
+            except Exception as e:
+                error_msg = str(e)
+                if 'invalid session id' in error_msg.lower():
+                    print("[SCRAPER] BS4 Description extraction error: WebDriver session is no longer valid")
+                else:
+                    first_line = error_msg.splitlines()[0] if error_msg else repr(e)
+                    print(f"[SCRAPER] BS4 Description extraction error: {first_line}")
             
-            # Extract job description div (alternative location)
-            try:
-                job_desc_div = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[2]")
-                job_details['job_description_div'] = job_desc_div.text.strip()
-            except:
-                pass
-            
-            # Extract job description content - combine multiple divs
-            job_desc_parts = []
-            desc_div_xpaths = [
-                "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[1]/div[2]",
-                "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[1]/div[3]",
-                "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[1]/div[4]"
-            ]
-            
-            for xpath in desc_div_xpaths:
+            # Also try to extract job_description_div as fallback (using old XPath method)
+            if not job_details.get('job_description_content'):
                 try:
-                    desc_div = self.driver.find_element(By.XPATH, xpath)
-                    text = desc_div.text.strip()
-                    if text:
-                        job_desc_parts.append(text)
+                    job_desc_div = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[2]")
+                    job_details['job_description_div'] = job_desc_div.text.strip()
+                    print("[SCRAPER] Extracted job_description_div as fallback")
                 except:
                     pass
-            
-            if job_desc_parts:
-                job_details['job_description_content'] = "\n\n".join(job_desc_parts)
-                print(f"[SCRAPER] Job description combined from {len(job_desc_parts)} divs")
-            else:
-                # Fallback to old method
-                try:
-                    job_desc_content = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[2]/div[3]/div[1]")
-                    job_details['job_description_content'] = job_desc_content.text.strip()
-                except:
-                    try:
-                        # Try alternative structure
-                        job_desc_content = self.driver.find_element(By.XPATH, "//section[2]//div[contains(@class, 'job-description') or contains(@class, 'description')]")
-                        job_details['job_description_content'] = job_desc_content.text.strip()
-                    except:
-                        pass
+            # --- END OF IMPROVED JOB DESCRIPTION EXTRACTION ---
             
             # Extract role and responsibilities
             try:
