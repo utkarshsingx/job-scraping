@@ -247,23 +247,6 @@ const JobsPage = () => {
         if (!matchesWorkMode) return false;
       }
 
-      // Duration filter
-      if (filters.duration && filters.duration.length > 0) {
-        const description = (job.job_description || '').toLowerCase();
-        const matchesDuration = filters.duration.some(duration => {
-          if (duration === '3 months') {
-            return description.match(/\b3\s*month/i) || description.match(/three\s*month/i);
-          }
-          if (duration === '6 months') {
-            return description.match(/\b6\s*month/i) || description.match(/six\s*month/i);
-          }
-          if (duration === '12 months') {
-            return description.match(/\b12\s*month/i) || description.match(/one\s*year/i) || description.match(/1\s*year/i);
-          }
-        return false;
-        });
-        if (!matchesDuration) return false;
-      }
 
       // Location filter
       if (filters.location && filters.location.length > 0) {
