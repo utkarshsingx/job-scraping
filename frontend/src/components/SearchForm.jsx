@@ -114,7 +114,11 @@ const SearchForm = ({ onSearch, loading }) => {
         location.toLowerCase().includes(formData.location.toLowerCase())
       ).slice(0, 8); // Show max 8 suggestions
       setLocationSuggestions(filtered);
-      setShowLocationSuggestions(filtered.length > 0);
+      // Only show suggestions if the value doesn't exactly match a suggestion (i.e., user is still typing)
+      const exactMatch = LOCATION_SUGGESTIONS.some(
+        loc => loc.toLowerCase() === formData.location.toLowerCase()
+      );
+      setShowLocationSuggestions(filtered.length > 0 && !exactMatch);
     } else {
       setLocationSuggestions([]);
       setShowLocationSuggestions(false);
@@ -130,7 +134,11 @@ const SearchForm = ({ onSearch, loading }) => {
         item.toLowerCase().includes(query)
       ).slice(0, 8); // Show max 8 suggestions
       setKeywordSuggestions(filtered);
-      setShowKeywordSuggestions(filtered.length > 0);
+      // Only show suggestions if the value doesn't exactly match a suggestion (i.e., user is still typing)
+      const exactMatch = KEYWORD_SUGGESTIONS.some(
+        item => item.toLowerCase() === query
+      );
+      setShowKeywordSuggestions(filtered.length > 0 && !exactMatch);
     } else {
       setKeywordSuggestions([]);
       setShowKeywordSuggestions(false);
