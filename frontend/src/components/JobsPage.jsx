@@ -14,7 +14,7 @@ const JobsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [selectedTags, setSelectedTags] = useState([]);
+  const [filters, setFilters] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState(null);
   const [searchParams, setSearchParams] = useState(null);
@@ -26,7 +26,7 @@ const JobsPage = () => {
       const restoredState = location.state.restoreState;
       setJobs(restoredState.jobs || []);
       setHasSearched(restoredState.hasSearched || false);
-      setSelectedTags(restoredState.selectedTags || []);
+      setFilters(restoredState.filters || {});
       setCurrentPage(restoredState.currentPage || 1);
       setPagination(restoredState.pagination || null);
       setSearchParams(restoredState.searchParams || null);
@@ -53,7 +53,7 @@ const JobsPage = () => {
         const parsedState = JSON.parse(savedState);
         setJobs(parsedState.jobs || []);
         setHasSearched(parsedState.hasSearched || false);
-        setSelectedTags(parsedState.selectedTags || []);
+        setFilters(parsedState.filters || {});
         setCurrentPage(parsedState.currentPage || 1);
         setPagination(parsedState.pagination || null);
         setSearchParams(parsedState.searchParams || null);
@@ -79,7 +79,7 @@ const JobsPage = () => {
       const stateToSave = {
         jobs,
         hasSearched,
-        selectedTags,
+        filters,
         currentPage,
         pagination,
         searchParams
@@ -90,7 +90,7 @@ const JobsPage = () => {
         console.error('Error saving state to sessionStorage:', err);
       }
     }
-  }, [jobs, hasSearched, selectedTags, currentPage, pagination, searchParams]);
+  }, [jobs, hasSearched, filters, currentPage, pagination, searchParams]);
 
   const handleSearch = async (params, page = 1) => {
     setLoading(true);
@@ -101,7 +101,7 @@ const JobsPage = () => {
     
     // Clear filters and pagination on new search (not when changing page)
     if (page === 1) {
-      setSelectedTags([]);
+      setFilters({});
       // Clear saved state for new search
       try {
         sessionStorage.removeItem(STORAGE_KEY);
@@ -146,25 +146,151 @@ const JobsPage = () => {
     }
   };
 
-  // Filter jobs based on selected tags
+  // Filter jobs based on all selected filters
   const filteredJobs = useMemo(() => {
-    if (selectedTags.length === 0) {
+    const hasActiveFilters = Object.values(filters).some(arr => arr && arr.length > 0);
+    
+    if (!hasActiveFilters) {
       return jobs;
     }
     
     return jobs.filter(job => {
-      if (!job.tags || !Array.isArray(job.tags)) {
-        return false;
+      // Department filter
+      if (filters.department && filters.department.length > 0) {
+        const jobTitle = (job.job_title || '').toLowerCase();
+        const matchesDepartment = filters.department.some(dept => {
+          const deptLower = dept.toLowerCase();
+          if (deptLower.includes('engineering') && (jobTitle.includes('engineering') || jobTitle.includes('developer') || jobTitle.includes('software'))) return true;
+          if (deptLower.includes('marketing') && jobTitle.includes('marketing')) return true;
+          if (deptLower.includes('sales') && jobTitle.includes('sales')) return true;
+          if (deptLower.includes('design') && (jobTitle.includes('design') || jobTitle.includes('ui') || jobTitle.includes('ux'))) return true;
+          if (deptLower.includes('data') && (jobTitle.includes('data') || jobTitle.includes('analyst') || jobTitle.includes('science'))) return true;
+          if (deptLower.includes('hr') && jobTitle.includes('hr')) return true;
+          if (deptLower.includes('finance') && jobTitle.includes('finance')) return true;
+          if (deptLower.includes('operations') && jobTitle.includes('operations')) return true;
+          return false;
+        });
+        if (!matchesDepartment) return false;
       }
-      return job.tags.some(tag => 
-        selectedTags.includes(tag.trim())
+
+      // Role Category filter
+      if (filters.roleCategory && filters.roleCategory.length > 0) {
+        const tags = (job.tags || []).map(t => t.toLowerCase()).join(' ');
+        const jobTitle = (job.job_title || '').toLowerCase();
+        const matchesRole = filters.roleCategory.some(role => {
+          const roleLower = role.toLowerCase();
+          return tags.includes(roleLower) || jobTitle.includes(roleLower);
+        });
+        if (!matchesRole) return false;
+      }
+
+      // Stipend filter
+      if (filters.stipend && filters.stipend.length > 0) {
+        const salary = (job.salary || '').toLowerCase();
+        const matchesStipend = filters.stipend.some(stipend => {
+          if (stipend === 'Unpaid' && (salary.includes('unpaid') || salary.includes('no stipend') || salary === 'not disclosed')) return true;
+          if (stipend === '0-10k') {
+            const match = salary.match(/(\d+)\s*k|(\d+)\s*thousand/i);
+            if (match) {
+              const amount = parseInt(match[1] || match[2]);
+              return amount >= 0 && amount < 10;
+            }
+            return !salary.includes('lakh') && !salary.includes('lpa');
+          }
+          if (stipend === '10k-20k') {
+            const match = salary.match(/(\d+)\s*k|(\d+)\s*thousand/i);
+            if (match) {
+              const amount = parseInt(match[1] || match[2]);
+              return amount >= 10 && amount < 20;
+            }
+            return salary.includes('lakh') || salary.includes('lpa');
+          }
+          if (stipend === '20k-30k') {
+            const match = salary.match(/(\d+)\s*k|(\d+)\s*thousand/i);
+            if (match) {
+              const amount = parseInt(match[1] || match[2]);
+              return amount >= 20 && amount < 30;
+            }
+            return false;
+          }
+          if (stipend === '30k+') {
+            const match = salary.match(/(\d+)\s*k|(\d+)\s*thousand/i);
+            if (match) {
+              const amount = parseInt(match[1] || match[2]);
+              return amount >= 30;
+            }
+            return false;
+          }
+          return false;
+        });
+        if (!matchesStipend) return false;
+      }
+
+      // Work Mode filter
+      if (filters.workMode && filters.workMode.length > 0) {
+        const location = (job.location || '').toLowerCase();
+        const description = (job.job_description || '').toLowerCase();
+        const matchesWorkMode = filters.workMode.some(mode => {
+          if (mode === 'Remote') {
+            return location.includes('remote') || location.includes('work from home') || location.includes('wfh') ||
+                   description.includes('remote') || description.includes('work from home') || description.includes('wfh');
+          }
+          if (mode === 'On-site') {
+            return !location.includes('remote') && !location.includes('work from home') && !location.includes('wfh') &&
+                   !description.includes('remote') && !description.includes('work from home') && !description.includes('wfh');
+          }
+          if (mode === 'Hybrid') {
+            return description.includes('hybrid');
+          }
+          return false;
+        });
+        if (!matchesWorkMode) return false;
+      }
+
+      // Duration filter
+      if (filters.duration && filters.duration.length > 0) {
+        const description = (job.job_description || '').toLowerCase();
+        const matchesDuration = filters.duration.some(duration => {
+          if (duration === '3 months') {
+            return description.match(/\b3\s*month/i) || description.match(/three\s*month/i);
+          }
+          if (duration === '6 months') {
+            return description.match(/\b6\s*month/i) || description.match(/six\s*month/i);
+          }
+          if (duration === '12 months') {
+            return description.match(/\b12\s*month/i) || description.match(/one\s*year/i) || description.match(/1\s*year/i);
+          }
+        return false;
+        });
+        if (!matchesDuration) return false;
+      }
+
+      // Location filter
+      if (filters.location && filters.location.length > 0) {
+        const jobLocations = (job.location || '').split(',').map(loc => loc.trim());
+        const matchesLocation = filters.location.some(filterLoc => {
+          return jobLocations.some(jobLoc => 
+            jobLoc.toLowerCase().includes(filterLoc.toLowerCase()) || 
+            filterLoc.toLowerCase().includes(jobLoc.toLowerCase())
       );
+        });
+        if (!matchesLocation) return false;
+      }
+
+      return true;
     });
-  }, [jobs, selectedTags]);
+  }, [jobs, filters]);
 
   return (
     <>
+      <header className="app-header">
+        <div className="header-content">
+          <div className="logo-section">
+            <h1 className="logo-text">JobPortal</h1>
+          </div>
       <SearchForm onSearch={handleSearch} loading={loading} />
+        </div>
+      </header>
       
       {error && (
         <div className="error-message">
@@ -177,8 +303,8 @@ const JobsPage = () => {
           {jobs.length > 0 && (
             <FilterSidebar 
               jobs={jobs} 
-              selectedTags={selectedTags}
-              onFilterChange={setSelectedTags}
+              filters={filters}
+              onFilterChange={setFilters}
             />
           )}
           <div style={{ flex: 1 }}>
@@ -190,7 +316,7 @@ const JobsPage = () => {
               searchState={{
                 jobs,
                 hasSearched,
-                selectedTags,
+                filters,
                 currentPage,
                 pagination,
                 searchParams
