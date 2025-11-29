@@ -1,4 +1,4 @@
-# Job Scraping Website
+# Job Scrapper
 
 A full-stack web application for scraping job listings from Naukri.com with a modern React frontend and Django REST API backend.
 
@@ -145,7 +145,7 @@ Search and scrape jobs from Naukri.com
 ## Project Structure
 
 ```
-job-scraping/
+job-scrapper/
 ├── backend/
 │   ├── backend/          # Django project settings
 │   ├── jobs/             # Jobs app (API views, serializers)
