@@ -59,15 +59,22 @@ class NaukriScraper:
                 if not os.path.exists(path):
                     return False
                 # Check if it's a text file (wrong file)
-                if 'THIRD_PARTY' in path or 'LICENSE' in path:
+                if 'THIRD_PARTY' in path or 'LICENSE' in path or 'NOTICES' in path:
                     return False
                 # Check file size (chromedriver is > 10MB, text files are < 1MB)
                 try:
                     size = os.path.getsize(path)
                     if size < 1000000:  # Less than 1MB is likely not the executable
                         return False
-                    # Check if executable or can be made executable
-                    return os.path.isfile(path) and (os.access(path, os.X_OK) or True)
+                    # Check if it's actually a binary file (not a text file)
+                    with open(path, 'rb') as f:
+                        first_bytes = f.read(4)
+                        # Text files start with readable ASCII, binaries don't
+                        if first_bytes.startswith(b'#!/') or first_bytes.startswith(b'# '):
+                            # Could be a shell script, check more
+                            if b'THIRD_PARTY' in f.read(100):
+                                return False
+                    return os.path.isfile(path)
                 except:
                     return False
             
@@ -80,14 +87,30 @@ class NaukriScraper:
                 if is_valid_chromedriver(same_dir_path):
                     driver_path = same_dir_path
                 else:
-                    # Search in subdirectories
+                    # Search in subdirectories (common on macOS ARM64)
                     if os.path.exists(driver_dir):
+                        # Check immediate subdirectories first
                         for item in os.listdir(driver_dir):
                             item_path = os.path.join(driver_dir, item)
                             if os.path.isdir(item_path):
+                                # Check for chromedriver in this subdirectory
                                 chromedriver_path = os.path.join(item_path, 'chromedriver')
                                 if is_valid_chromedriver(chromedriver_path):
                                     driver_path = chromedriver_path
+                                    break
+                                # Also check nested subdirectories (macOS ARM64 structure)
+                                for subitem in os.listdir(item_path):
+                                    subitem_path = os.path.join(item_path, subitem)
+                                    if os.path.isdir(subitem_path):
+                                        nested_chromedriver = os.path.join(subitem_path, 'chromedriver')
+                                        if is_valid_chromedriver(nested_chromedriver):
+                                            driver_path = nested_chromedriver
+                                            break
+                                    elif subitem == 'chromedriver':
+                                        if is_valid_chromedriver(subitem_path):
+                                            driver_path = subitem_path
+                                            break
+                                if driver_path:
                                     break
                     
                     # If still not found, do recursive search
@@ -95,7 +118,7 @@ class NaukriScraper:
                         def find_chromedriver_recursive(directory):
                             for root, dirs, files in os.walk(directory):
                                 for file in files:
-                                    if file == 'chromedriver':
+                                    if file == 'chromedriver' and 'THIRD_PARTY' not in root and 'LICENSE' not in root:
                                         full_path = os.path.join(root, file)
                                         if is_valid_chromedriver(full_path):
                                             return full_path
@@ -120,8 +143,24 @@ class NaukriScraper:
                 except Exception as e:
                     print(f"Warning: Could not make chromedriver executable: {e}")
             
+            # Add additional Chrome options to help with connection issues
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--remote-debugging-port=9222')
+            
             service = Service(driver_path)
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            try:
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            except Exception as chrome_error:
+                # If connection fails, try with additional options
+                if 'unable to connect to renderer' in str(chrome_error).lower():
+                    print("[SCRAPER] Retrying with additional Chrome options...")
+                    chrome_options.add_argument('--disable-software-rasterizer')
+                    chrome_options.add_argument('--disable-extensions')
+                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                else:
+                    raise
             self.driver.set_page_load_timeout(30)  # 30 second timeout
             self.wait = WebDriverWait(self.driver, 20)
             
