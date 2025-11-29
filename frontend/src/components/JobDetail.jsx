@@ -103,6 +103,7 @@ const JobDetail = () => {
         const data = await getJobDetails(decodedUrl);
         
         if (data.success) {
+          console.log('[JobDetail] Received job details:', data.job_details);
           setJobDetails(data.job_details);
         } else {
           setError(data.message || data.error || 'Failed to load job details');
@@ -211,6 +212,23 @@ const JobDetail = () => {
 
   const decodedJobUrl = jobUrl ? decodeURIComponent(jobUrl) : null;
 
+  // Debug: Log what we have
+  if (jobDetails) {
+    console.log('[JobDetail] Rendering with data:', {
+      hasHeaderTitle: !!jobDetails.header_title,
+      hasCompanyTitle: !!jobDetails.company_title,
+      hasCompanyLogo: !!jobDetails.company_logo,
+      hasRating: !!jobDetails.rating,
+      hasReviews: !!jobDetails.reviews,
+      hasExperience: !!jobDetails.experience,
+      hasSalary: !!jobDetails.salary,
+      hasLocation: !!jobDetails.location,
+      hasDescription: !!jobDetails.job_description_content,
+      hasSkills: !!jobDetails.key_skills && jobDetails.key_skills.length > 0,
+      allKeys: Object.keys(jobDetails)
+    });
+  }
+
   return (
     <div className="job-detail-wrapper">
       <div className="job-detail-main-content">
@@ -219,91 +237,113 @@ const JobDetail = () => {
             ← Back to Jobs
           </button>
 
-          <div className="job-detail-header">
-        <div className="job-detail-header-content">
-          {jobDetails.company_logo && (
-            <div className="company-logo-large">
-              <img 
-                src={jobDetails.company_logo} 
-                alt={jobDetails.company_title || 'Company logo'}
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
-              />
-            </div>
-          )}
-          <div className="job-detail-title-section">
-            <h1 className="job-detail-title">{jobDetails.header_title || 'Job Title'}</h1>
-            <div className="company-info-header">
-              {jobDetails.company_title && (
-                <span className="company-title">{jobDetails.company_title}</span>
-              )}
-              {(jobDetails.rating || jobDetails.reviews) && (
-                <div className="rating-section">
-                  {jobDetails.rating && (
-                    <span className="rating">
-                      <span className="star">★</span>
-                      {jobDetails.rating}
+          {jobDetails && (
+            <div className="job-detail-header">
+              <div className="job-detail-header-content">
+                <div 
+                  className={`company-logo-wrapper ${!jobDetails.company_logo ? 'no-logo' : ''}`}
+                  data-initial={jobDetails.company_title ? (jobDetails.company_title.split(/\s+/).length >= 2 
+                    ? (jobDetails.company_title.split(/\s+/)[0][0] + jobDetails.company_title.split(/\s+/)[1][0]).toUpperCase()
+                    : jobDetails.company_title[0].toUpperCase()) : '?'}
+                >
+                  {jobDetails.company_logo ? (
+                    <img 
+                      src={jobDetails.company_logo} 
+                      alt={jobDetails.company_title || 'Company logo'}
+                      className="company-logo"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.classList.add('no-logo');
+                      }}
+                    />
+                  ) : (
+                    <span className="company-initial">
+                      {jobDetails.company_title ? (jobDetails.company_title.split(/\s+/).length >= 2 
+                        ? (jobDetails.company_title.split(/\s+/)[0][0] + jobDetails.company_title.split(/\s+/)[1][0]).toUpperCase()
+                        : jobDetails.company_title[0].toUpperCase()) : '?'}
                     </span>
                   )}
-                  {jobDetails.reviews && (
-                    <span className="reviews">{jobDetails.reviews}</span>
-                  )}
+                </div>
+                <div className="job-title-section">
+                  <h1 className="job-detail-title">{jobDetails.header_title || 'Job Title'}</h1>
+                  <div className="company-details">
+                    {jobDetails.company_title && (
+                      <span className="company-name">{jobDetails.company_title}</span>
+                    )}
+                    {(jobDetails.rating || jobDetails.reviews) && (
+                      <div className="job-rating-section">
+                        {jobDetails.rating && (
+                          <span className="rating">
+                            <span className="star">★</span>
+                            {jobDetails.rating}
+                          </span>
+                        )}
+                        {jobDetails.reviews && (
+                          <span className="reviews">{jobDetails.reviews}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {jobDetails.apply_button_text && (
+                  <button 
+                    className="apply-button"
+                    onClick={() => {
+                      if (decodedJobUrl) {
+                        window.open(decodedJobUrl, '_blank');
+                      }
+                    }}
+                  >
+                    <span className="apply-text">{jobDetails.apply_button_text}</span>
+                    <span className="apply-arrow">→</span>
+                  </button>
+                )}
+              </div>
+            
+            <div className="job-details-section">
+              {jobDetails.experience && (
+                <div className="detail-item">
+                  <HiOutlineBriefcase className="detail-icon experience-icon" />
+                  <span className="detail-text">{jobDetails.experience}</span>
+                </div>
+              )}
+              {jobDetails.salary && (
+                <div className="detail-item">
+                  <HiOutlineCurrencyRupee className="detail-icon salary-icon" />
+                  <span className="detail-text">{jobDetails.salary}</span>
+                </div>
+              )}
+              {jobDetails.location && (
+                <div className="detail-item">
+                  <HiOutlineLocationMarker className="detail-icon location-icon" />
+                  <span className="detail-text">{jobDetails.location}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="job-detail-stats">
+              {jobDetails.posted && (
+                <span className="stat-item">Posted: {jobDetails.posted}</span>
+              )}
+              {jobDetails.openings && (
+                <span className="stat-item">Openings: {jobDetails.openings}</span>
+              )}
+              {jobDetails.applicants && (
+                <span className="stat-item">Applicants: {jobDetails.applicants}</span>
+              )}
+            </div>
+
+            <div className="job-detail-badges">
+              {jobDetails.internship_label && (
+                <div className="internship-badge">{jobDetails.internship_label}</div>
+              )}
+              {jobDetails.job_match_score && (
+                <div className="job-match-score">
+                  {jobDetails.job_match_score}
                 </div>
               )}
             </div>
           </div>
-        </div>
-        
-        <div className="job-detail-meta">
-          {jobDetails.experience && (
-            <div className="meta-item">
-              <HiOutlineBriefcase className="detail-icon experience-icon" />
-              <span className="meta-value">{jobDetails.experience}</span>
-            </div>
-          )}
-          {jobDetails.salary && (
-            <div className="meta-item">
-              <HiOutlineCurrencyRupee className="detail-icon salary-icon" />
-              <span className="meta-value">{jobDetails.salary}</span>
-            </div>
-          )}
-          {jobDetails.location && (
-            <div className="meta-item">
-              <HiOutlineLocationMarker className="detail-icon location-icon" />
-              <span className="meta-value">{jobDetails.location}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="job-detail-stats">
-          {jobDetails.posted && (
-            <span className="stat-item">Posted: {jobDetails.posted}</span>
-          )}
-          {jobDetails.openings && (
-            <span className="stat-item">Openings: {jobDetails.openings}</span>
-          )}
-          {jobDetails.applicants && (
-            <span className="stat-item">Applicants: {jobDetails.applicants}</span>
-          )}
-        </div>
-
-        {jobDetails.internship_label && (
-          <div className="internship-badge">{jobDetails.internship_label}</div>
-        )}
-
-        {jobDetails.job_match_score && (
-          <div className="job-match-score">
-            {jobDetails.job_match_score}
-          </div>
-        )}
-
-        {jobDetails.apply_button_text && (
-          <button className="apply-button-large">
-            {jobDetails.apply_button_text}
-          </button>
-        )}
-      </div>
 
       {jobDetails.job_highlights && (jobDetails.job_highlights.title || (jobDetails.job_highlights.items && jobDetails.job_highlights.items.length > 0)) && (
         <div className="job-detail-section">
@@ -375,34 +415,34 @@ const JobDetail = () => {
         <div className="job-detail-section">
           <h2 className="section-title">Job Details</h2>
           <div className="job-details-grid">
-            {jobDetails.role && (
+            {jobDetails.role && jobDetails.role.trim() && !jobDetails.role.toLowerCase().includes('industry type') && (
               <div className="detail-row">
-                <span className="detail-label">Role:</span>
-                <span className="detail-value">{jobDetails.role}</span>
+                <span className="detail-label">Role</span>
+                <span className="detail-value">{jobDetails.role.replace(/^role:/i, '').replace(/^role/i, '').trim().replace(/,$/, '').trim()}</span>
               </div>
             )}
-            {jobDetails.industry_type && (
+            {jobDetails.industry_type && jobDetails.industry_type.trim() && (
               <div className="detail-row">
-                <span className="detail-label">Industry Type:</span>
-                <span className="detail-value">{jobDetails.industry_type}</span>
+                <span className="detail-label">Industry Type</span>
+                <span className="detail-value">{jobDetails.industry_type.replace(/^industry type:/i, '').replace(/^industry type/i, '').trim().replace(/,$/, '').trim()}</span>
               </div>
             )}
-            {jobDetails.department && (
+            {jobDetails.department && jobDetails.department.trim() && (
               <div className="detail-row">
-                <span className="detail-label">Department:</span>
-                <span className="detail-value">{jobDetails.department}</span>
+                <span className="detail-label">Department</span>
+                <span className="detail-value">{jobDetails.department.replace(/^department:/i, '').replace(/^department/i, '').trim().replace(/,$/, '').trim()}</span>
               </div>
             )}
-            {jobDetails.employment_type && (
+            {jobDetails.employment_type && jobDetails.employment_type.trim() && (
               <div className="detail-row">
-                <span className="detail-label">Employment Type:</span>
-                <span className="detail-value">{jobDetails.employment_type}</span>
+                <span className="detail-label">Employment Type</span>
+                <span className="detail-value">{jobDetails.employment_type.replace(/^employment type:/i, '').replace(/^employment type/i, '').trim().replace(/,$/, '').trim()}</span>
               </div>
             )}
-            {jobDetails.role_category && (
+            {jobDetails.role_category && jobDetails.role_category.trim() && (
               <div className="detail-row">
-                <span className="detail-label">Role Category:</span>
-                <span className="detail-value">{jobDetails.role_category}</span>
+                <span className="detail-label">Role Category</span>
+                <span className="detail-value">{jobDetails.role_category.replace(/^role category:/i, '').replace(/^role category/i, '').trim().replace(/,$/, '').trim()}</span>
               </div>
             )}
           </div>
@@ -415,16 +455,16 @@ const JobDetail = () => {
             {jobDetails.education_title || 'Education'}
           </h2>
           <div className="education-details">
-            {jobDetails.ug_education && (
+            {jobDetails.ug_education && !jobDetails.ug_education.toLowerCase().includes('key skills') && (
               <div className="education-item">
-                <span className="education-type">UG:</span>
-                <span className="education-value">{jobDetails.ug_education}</span>
+                <span className="education-type">UG</span>
+                <span className="education-value">{jobDetails.ug_education.replace(/^ug:/i, '').trim()}</span>
               </div>
             )}
-            {jobDetails.pg_education && (
+            {jobDetails.pg_education && !jobDetails.pg_education.toLowerCase().includes('key skills') && (
               <div className="education-item">
-                <span className="education-type">PG:</span>
-                <span className="education-value">{jobDetails.pg_education}</span>
+                <span className="education-type">PG</span>
+                <span className="education-value">{jobDetails.pg_education.replace(/^pg:/i, '').trim()}</span>
               </div>
             )}
           </div>
@@ -436,10 +476,7 @@ const JobDetail = () => {
           <h2 className="section-title">Key Skills</h2>
           <div className="key-skills">
             {jobDetails.key_skills.map((skill, index) => (
-              <React.Fragment key={index}>
-                <span className="skill-tag">{skill}</span>
-                {index < jobDetails.key_skills.length - 1 && <span className="tag-separator">•</span>}
-              </React.Fragment>
+              <span key={index} className="skill-tag">{skill.trim()}</span>
             ))}
           </div>
         </div>
