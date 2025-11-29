@@ -7,15 +7,6 @@ import './styles/App.css';
 function App() {
   return (
     <div className="App">
-      <header className="app-header">
-        <div className="header-content">
-          <div className="logo-section">
-            <h1 className="logo-text">JobPortal</h1>
-            <span className="logo-subtitle">Find Your Dream Job</span>
-          </div>
-        </div>
-      </header>
-      
       <main className="app-main">
         <Routes>
           <Route path="/" element={<JobsPage />} />
