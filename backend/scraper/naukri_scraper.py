@@ -979,13 +979,22 @@ class NaukriScraper:
                         print("[SCRAPER] Could not find header title with XPath, trying BeautifulSoup...")
                         # Try using BeautifulSoup as fallback
                         try:
-                            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+                            # Guard against invalid WebDriver session when accessing page_source
+                            page_source = self.driver.page_source
+                            soup = BeautifulSoup(page_source, 'html.parser')
                             h1_tag = soup.find('h1')
                             if h1_tag:
                                 job_details['header_title'] = h1_tag.get_text(strip=True)
                                 print(f"[SCRAPER] Found header title using BeautifulSoup: {job_details['header_title'][:80]}")
                         except Exception as bs_error:
-                            print(f"[SCRAPER] BeautifulSoup fallback failed: {bs_error}")
+                            msg = str(bs_error)
+                            # Selenium's WebDriverException includes a very long chromedriver stacktrace;
+                            # collapse that to a short, readable message.
+                            if 'invalid session id' in msg.lower():
+                                print("[SCRAPER] BeautifulSoup fallback failed: WebDriver session is no longer valid")
+                            else:
+                                first_line = msg.splitlines()[0] if msg else repr(bs_error)
+                                print(f"[SCRAPER] BeautifulSoup fallback failed: {first_line}")
                         pass
             
             # Extract company title - try multiple XPaths
@@ -1033,7 +1042,7 @@ class NaukriScraper:
             
             # Extract salary
             try:
-                salary = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[1]/section[1]/div[1]/div[2]/div[1]/div[2]/span")
+                salary = self.driver.find_element(By.XPATH, "/html/body/div[1]/div/main/div[1]/div[2]/div[5]/div/div[1]/div/div[3]/div/span[2]/span/span")
                 job_details['salary'] = salary.text.strip()
             except:
                 pass
@@ -1282,7 +1291,12 @@ class NaukriScraper:
                 job_details['key_skills'] = [skill.text.strip() for skill in skill_elements if skill.text.strip()]
                 print(f"[SCRAPER] Found {len(job_details['key_skills'])} key skills")
             except Exception as e:
-                print(f"[SCRAPER] Error extracting key skills: {e}")
+                msg = str(e)
+                if 'invalid session id' in msg.lower():
+                    print("[SCRAPER] Error extracting key skills: WebDriver session is no longer valid")
+                else:
+                    first_line = msg.splitlines()[0] if msg else repr(e)
+                    print(f"[SCRAPER] Error extracting key skills: {first_line}")
                 pass
             
             # Extract about company header
