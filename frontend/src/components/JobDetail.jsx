@@ -1,8 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { HiOutlineCurrencyRupee, HiOutlineBriefcase, HiOutlineLocationMarker } from 'react-icons/hi';
 import { getJobDetails } from '../services/api';
 import RelatedJobs from './RelatedJobs';
 import '../styles/JobDetail.css';
+
+const DETAIL_LOADING_STEPS = [
+  'Connecting securely to the job details page',
+  'Fetching core information from Naukri',
+  'Parsing salary, experience and location',
+  'Loading description and key skills',
+  'Preparing company and culture insights',
+  'Polishing everything for a clean view'
+];
+
+const DETAIL_FUN_FACTS = [
+  'Fun fact: Many candidates discover new roles while exploring job details.',
+  'Fun fact: Clear job descriptions can increase applications by over 30%.',
+  'Fun fact: Candidates spend more time reading benefits than responsibilities.',
+  'Fun fact: Company culture sections are among the most-read parts of a job ad.',
+  'Fun fact: Roles with clear growth paths attract significantly more applicants.'
+];
 
 const JobDetail = () => {
   const { jobUrl } = useParams();
@@ -13,6 +31,8 @@ const JobDetail = () => {
   const [error, setError] = useState(null);
   const [relatedJobs, setRelatedJobs] = useState([]);
   const [searchState, setSearchState] = useState(null);
+  const [loadingStepIndex, setLoadingStepIndex] = useState(0);
+  const [loadingFunFact, setLoadingFunFact] = useState('');
 
   // Get related jobs from location state or sessionStorage
   useEffect(() => {
@@ -36,6 +56,28 @@ const JobDetail = () => {
       console.error('Error loading related jobs from sessionStorage:', err);
     }
   }, [location]);
+
+  useEffect(() => {
+    let intervalId;
+    if (loading) {
+      setLoadingStepIndex(0);
+      const randomFact =
+        DETAIL_FUN_FACTS[Math.floor(Math.random() * DETAIL_FUN_FACTS.length)];
+      setLoadingFunFact(randomFact);
+
+      intervalId = setInterval(() => {
+        setLoadingStepIndex((prev) =>
+          prev < DETAIL_LOADING_STEPS.length - 1 ? prev + 1 : prev
+        );
+      }, 800);
+    } else {
+      setLoadingStepIndex(0);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [loading]);
 
   const handleBack = () => {
     // If we have restore state, navigate to home with it
@@ -76,13 +118,56 @@ const JobDetail = () => {
   }, [jobUrl]);
 
   if (loading) {
+    const percent = Math.min(
+      100,
+      Math.round(
+        ((loadingStepIndex + 1) / DETAIL_LOADING_STEPS.length) * 100
+      )
+    );
+
     return (
       <div className="job-detail-wrapper">
         <div className="job-detail-main-content">
           <div className="job-detail-container">
-            <div className="loading-container">
-              <div className="spinner"></div>
-              <p>Loading job details...</p>
+            <div className="job-detail-skeleton">
+              <div className="detail-loading-header">
+                <div className="detail-loading-left">
+                  <div className="detail-loading-icon" />
+                  <div className="detail-loading-meta">
+                    <span className="detail-loading-label">Opening job details</span>
+                    <span className="detail-loading-step">
+                      Step {loadingStepIndex + 1} of {DETAIL_LOADING_STEPS.length}
+                    </span>
+                  </div>
+                </div>
+                <span className="detail-loading-percent">{percent}%</span>
+              </div>
+              <p className="detail-loading-main">
+                {DETAIL_LOADING_STEPS[loadingStepIndex]}
+              </p>
+              <div className="detail-loading-bar">
+                <div
+                  className="detail-loading-bar-fill"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <div className="detail-loading-steps-dots">
+                {DETAIL_LOADING_STEPS.map((_, index) => (
+                  <span
+                    key={index}
+                    className={
+                      index <= loadingStepIndex
+                        ? 'detail-loading-step-dot active'
+                        : 'detail-loading-step-dot'
+                    }
+                  />
+                ))}
+              </div>
+              {loadingFunFact && (
+                <p className="detail-loading-fun-fact">
+                  <span className="label">Did you know?</span> {loadingFunFact}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -173,19 +258,19 @@ const JobDetail = () => {
         <div className="job-detail-meta">
           {jobDetails.experience && (
             <div className="meta-item">
-              <span className="detail-icon experience-icon"></span>
+              <HiOutlineBriefcase className="detail-icon experience-icon" />
               <span className="meta-value">{jobDetails.experience}</span>
             </div>
           )}
           {jobDetails.salary && (
             <div className="meta-item">
-              <span className="detail-icon salary-icon"></span>
+              <HiOutlineCurrencyRupee className="detail-icon salary-icon" />
               <span className="meta-value">{jobDetails.salary}</span>
             </div>
           )}
           {jobDetails.location && (
             <div className="meta-item">
-              <span className="detail-icon location-icon"></span>
+              <HiOutlineLocationMarker className="detail-icon location-icon" />
               <span className="meta-value">{jobDetails.location}</span>
             </div>
           )}
