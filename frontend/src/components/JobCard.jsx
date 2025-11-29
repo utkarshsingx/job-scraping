@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { HiOutlineBriefcase, HiOutlineLocationMarker } from 'react-icons/hi';
 import '../styles/JobCard.css';
 
 const JobCard = ({ job, searchState = null }) => {
@@ -84,19 +85,19 @@ const JobCard = ({ job, searchState = null }) => {
       <div className="job-details-section">
         {job.experience && (
           <div className="detail-item">
-            <span className="detail-icon experience-icon"></span>
+            <HiOutlineBriefcase className="detail-icon experience-icon" />
             <span className="detail-text">{job.experience}</span>
           </div>
         )}
-        {job.salary && (
+        {/* {job.salary && (
           <div className="detail-item">
-            <span className="detail-icon salary-icon"></span>
+            <HiOutlineCurrencyRupee className="detail-icon salary-icon" />
             <span className="detail-text">{job.salary}</span>
           </div>
-        )}
+        )} */}
         {job.location && (
           <div className="detail-item">
-            <span className="detail-icon location-icon"></span>
+            <HiOutlineLocationMarker className="detail-icon location-icon" />
             <span className="detail-text">{job.location}</span>
           </div>
         )}
