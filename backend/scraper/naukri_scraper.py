@@ -1170,50 +1170,68 @@ class NaukriScraper:
                     soup = None
             
             if soup:
-                # 1. ROBUST JOB DESCRIPTION EXTRACTION
-                # Strategy: Find the "Job description" header, then grab the content immediately after it.
+                # 1. Basic Header Info (Title, Company, Exp, Loc)
                 try:
-                    # Find any header (h2, h3, div) that explicitly says "Job description"
-                    desc_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'Job description' in tag.text.strip())
+                    # Job Title - usually the first H1
+                    h1 = soup.find('h1')
+                    if h1:
+                        job_details['header_title'] = h1.get_text(strip=True)
                     
-                    if desc_header:
-                        job_details['job_description_header'] = desc_header.get_text(strip=True)
-                        
-                        # The content is usually in a div with class 'dang-inner-html'
-                        content_div = soup.find('div', class_='dang-inner-html')
-                        
-                        if content_div:
-                            # Best case: We found the specific class Naukri uses
-                            job_details['job_description_content'] = content_div.get_text(separator='\n').strip()
-                        else:
-                            # Fallback: Get the parent section text, removing the header
-                            section = desc_header.find_parent('section')
+                    # Company Name - look for class 'company-name' or first link in info section
+                    comp_link = soup.find('a', class_='job-company-name') or soup.find('a', class_='company-name')
+                    if not comp_link:
+                        # Fallback: Find first link in the top section
+                        header_sec = soup.find('section')
+                        if header_sec:
+                            comp_link = header_sec.find('a', href=True)
+                    if comp_link:
+                        job_details['company_title'] = comp_link.get_text(strip=True)
+                    
+                    # Experience - Look for specific icon class or text pattern
+                    exp_icon = soup.find('i', class_='naukicon-naukicon-experience')
+                    if exp_icon and exp_icon.parent:
+                        job_details['experience'] = exp_icon.parent.get_text(strip=True)
+                    else:
+                        # Text fallback
+                        exp_span = soup.find(lambda tag: tag.name == 'span' and tag.text and ('years' in tag.text.lower() or 'yrs' in tag.text.lower()))
+                        if exp_span:
+                            job_details['experience'] = exp_span.get_text(strip=True)
+                    
+                    # Salary
+                    sal_icon = soup.find('i', class_='naukicon-naukicon-salary')
+                    if sal_icon and sal_icon.parent:
+                        job_details['salary'] = sal_icon.parent.get_text(strip=True)
+                    
+                    # Location
+                    loc_icon = soup.find('i', class_='naukicon-naukicon-location')
+                    if loc_icon and loc_icon.parent:
+                        job_details['location'] = loc_icon.parent.get_text(strip=True)
+                except Exception as e:
+                    print(f"[SCRAPER] Error extracting basic headers: {e}")
+                
+                # 2. JOB DESCRIPTION (Priority Fix)
+                # Strategy: Look for the specific class Naukri uses for rich text
+                try:
+                    # 'dang-inner-html' is the standard class for the description container
+                    content_div = soup.find(class_='dang-inner-html')
+                    if content_div:
+                        job_details['job_description_content'] = content_div.get_text(separator='\n').strip()
+                    else:
+                        # Fallback: Find header "Job description" and get parent text
+                        desc_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'job description' in tag.text.lower())
+                        if desc_header:
+                            job_details['job_description_header'] = desc_header.get_text(strip=True)
+                            section = desc_header.find_parent('section') or desc_header.find_parent('div')
                             if section:
                                 full_text = section.get_text(separator='\n').strip()
+                                # Try to clean up the header text from the result
                                 header_text = desc_header.get_text(strip=True)
-                                # Remove header from full text
-                                if full_text.startswith(header_text):
+                                if full_text.lower().startswith(header_text.lower()):
                                     job_details['job_description_content'] = full_text[len(header_text):].strip()
                                 else:
-                                    # Try to find the next sibling div after the header
-                                    next_div = desc_header.find_next_sibling('div')
-                                    if next_div:
-                                        job_details['job_description_content'] = next_div.get_text(separator='\n').strip()
-                                    else:
-                                        # Get all text from parent, excluding header
-                                        parent = desc_header.find_parent(['div', 'section'])
-                                        if parent:
-                                            # Get text from all children except the header
-                                            text_parts = []
-                                            for child in parent.find_all(['div', 'p', 'span', 'ul', 'li']):
-                                                if child != desc_header and desc_header not in child.find_all():
-                                                    text = child.get_text(strip=True)
-                                                    if text and len(text) > 10:  # Filter out very short text
-                                                        text_parts.append(text)
-                                            if text_parts:
-                                                job_details['job_description_content'] = '\n\n'.join(text_parts)
+                                    job_details['job_description_content'] = full_text
                 except Exception as e:
-                    print(f"[SCRAPER] Error extracting job description: {e}")
+                    print(f"[SCRAPER] Error extracting description: {e}")
             
             # Extract role and responsibilities
             try:
@@ -1250,86 +1268,77 @@ class NaukriScraper:
             except:
                 pass
             
-                # 2. ROBUST ROLE & INDUSTRY EXTRACTION
-                # Strategy: Look for labels "Role:", "Industry Type:", etc. and get their next sibling
+                # 3. DETAILS (Role, Industry, Functional Area)
+                # Strategy: Find the text label, then traverse up to find the value pair
                 try:
-                    def get_detail_by_label(label_text):
-                        label = soup.find('label', string=lambda x: x and label_text.lower() in x.lower())
-                        if label:
-                            # Value is usually in the next sibling span or a link inside it
-                            value_span = label.find_next_sibling(['span', 'a'])
-                            if value_span:
-                                return value_span.get_text(strip=True)
-                            # Or it might be in a span within the same parent
-                            parent = label.find_parent(['div', 'span'])
-                            if parent:
-                                value_elem = parent.find(['span', 'a'], string=lambda x: x and x != label.get_text(strip=True))
-                                if value_elem:
-                                    return value_elem.get_text(strip=True)
+                    def extract_field_by_label(labels):
+                        for label_text in labels:
+                            # Find any element containing exactly this text (or close to it)
+                            label_elem = soup.find(lambda tag: tag.text and tag.text.strip().lower() == label_text.lower())
+                            if label_elem:
+                                # Usually the structure is Label -> Sibling Value OR Parent -> Label + Value
+                                # Check next sibling first
+                                value = label_elem.find_next_sibling()
+                                if value:
+                                    return value.get_text(strip=True)
+                                
+                                # Check parent's next sibling (common in grid layouts)
+                                if label_elem.parent:
+                                    value = label_elem.parent.find_next_sibling()
+                                    if value:
+                                        return value.get_text(strip=True)
                         return ''
                     
-                    job_details['role'] = get_detail_by_label('Role')
-                    job_details['industry_type'] = get_detail_by_label('Industry Type')
-                    job_details['department'] = get_detail_by_label('Department')
-                    job_details['employment_type'] = get_detail_by_label('Employment Type')
-                    job_details['role_category'] = get_detail_by_label('Role Category')
+                    job_details['role'] = extract_field_by_label(['Role', 'Role Category'])
+                    job_details['industry_type'] = extract_field_by_label(['Industry', 'Industry Type'])
+                    job_details['department'] = extract_field_by_label(['Department', 'Functional Area'])
+                    job_details['employment_type'] = extract_field_by_label(['Employment Type'])
+                    job_details['role_category'] = extract_field_by_label(['Role Category'])
                     
                 except Exception as e:
-                    print(f"[SCRAPER] Error extracting role/industry details: {e}")
-            
-                # 3. ROBUST EDUCATION EXTRACTION
+                    print(f"[SCRAPER] Error extracting other details: {e}")
+                
+                # 4. EDUCATION
                 try:
-                    # Find "Education" header
-                    edu_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'Education' in tag.text.strip())
-                    if edu_header:
-                        job_details['education_title'] = edu_header.get_text(strip=True)
-                        
-                        # Search within the education section container
-                        edu_section = edu_header.find_parent('div') or edu_header.find_parent('section')
-                        if edu_section:
-                            # Use the same label helper within this section
-                            def get_edu_by_label(label_text, container):
-                                label = container.find('label', string=lambda x: x and label_text.lower() in x.lower())
-                                if label:
-                                    value_span = label.find_next_sibling('span')
-                                    if value_span:
-                                        return value_span.get_text(strip=True)
-                                    # Or find span within same parent
-                                    parent = label.find_parent(['div', 'span'])
-                                    if parent:
-                                        value_elem = parent.find('span', string=lambda x: x and x != label.get_text(strip=True))
-                                        if value_elem:
-                                            return value_elem.get_text(strip=True)
-                                return ''
+                    # Naukri often groups education under an "Education" section
+                    edu_section = soup.find(lambda tag: tag.text and 'Education' in tag.text and tag.name in ['h2', 'h3', 'div'])
+                    if edu_section:
+                        job_details['education_title'] = edu_section.get_text(strip=True)
+                        # Look for UG and PG text nearby
+                        container = edu_section.find_parent('div') or edu_section.find_parent('section')
+                        if container:
+                            ug_label = container.find(lambda t: t.text and 'UG' in t.text)
+                            if ug_label:
+                                job_details['ug_education'] = ug_label.find_next_sibling().get_text(strip=True) if ug_label.find_next_sibling() else ug_label.parent.get_text(strip=True)
                             
-                            job_details['ug_education'] = get_edu_by_label('UG', edu_section)
-                            job_details['pg_education'] = get_edu_by_label('PG', edu_section)
+                            pg_label = container.find(lambda t: t.text and 'PG' in t.text)
+                            if pg_label:
+                                job_details['pg_education'] = pg_label.find_next_sibling().get_text(strip=True) if pg_label.find_next_sibling() else pg_label.parent.get_text(strip=True)
                 except Exception as e:
                     print(f"[SCRAPER] Error extracting education: {e}")
-            
-                # 4. ROBUST KEY SKILLS EXTRACTION
+                
+                # 5. KEY SKILLS
                 try:
-                    # Find "Key Skills" header
-                    skills_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'Key Skills' in tag.text.strip())
+                    # Find the "Key Skills" header
+                    skills_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'key skills' in tag.text.lower())
                     if skills_header:
-                        skills_section = skills_header.find_parent('div') or skills_header.find_parent('section')
-                        if skills_section:
-                            # Skills are usually in 'a' tags or 'span' tags that look like chips/badges
-                            # We exclude the header itself and known non-skill links
+                        # Get the container section
+                        skills_container = skills_header.find_parent('section') or skills_header.find_parent('div')
+                        if skills_container:
+                            # Skills are typically links (a) or spans inside a specific chip container
+                            # We gather ALL links/spans that aren't the header itself
+                            potential_skills = skills_container.find_all(['a', 'span'])
                             skills = []
-                            for tag in skills_section.find_all(['a', 'span']):
-                                # Simple heuristic: Skills usually don't have long text
+                            for tag in potential_skills:
                                 text = tag.get_text(strip=True)
-                                if text and text != 'Key Skills' and len(text) < 50 and len(text) > 1:
-                                    # Filter out common non-skill text
-                                    if text.lower() not in ['view', 'more', 'less', 'show', 'hide', 'key skills']:
-                                        skills.append(text)
+                                # Heuristic: Skills are usually short (less than 40 chars) and not the header text
+                                if 1 < len(text) < 40 and 'key skills' not in text.lower() and 'suggested' not in text.lower():
+                                    skills.append(text)
                             
-                            # Filter duplicates and empty strings
-                            job_details['key_skills'] = list(dict.fromkeys(skills))  # Preserves order while removing duplicates
-                            print(f"[SCRAPER] Found {len(job_details['key_skills'])} key skills using BeautifulSoup")
+                            # Dedup and save
+                            job_details['key_skills'] = list(set(skills))
                 except Exception as e:
-                    print(f"[SCRAPER] Error extracting key skills: {e}")
+                    print(f"[SCRAPER] Error extracting skills: {e}")
             
             # Extract about company header
             try:
@@ -1358,32 +1367,31 @@ class NaukriScraper:
             except:
                 pass
             
-                # 5. ROBUST ABOUT COMPANY EXTRACTION
+                # 6. ABOUT COMPANY
                 try:
-                    about_header = soup.find(lambda tag: tag.name in ['h2', 'h3'] and tag.text and 'About Company' in tag.text.strip())
+                    about_header = soup.find(lambda tag: tag.name in ['h2', 'h3', 'div'] and tag.text and 'about company' in tag.text.lower())
                     if about_header:
                         job_details['about_company_header'] = about_header.get_text(strip=True)
-                        about_container = about_header.find_parent('div') or about_header.find_parent('section')
-                        if about_container:
-                            # Get all text, subtract the header
-                            full_text = about_container.get_text(separator='\n').strip()
-                            header_txt = about_header.get_text(strip=True)
-                            if full_text.startswith(header_txt):
-                                job_details['about_company_description'] = full_text[len(header_txt):].strip()
+                        container = about_header.find_parent('div')
+                        if container:
+                            full_text = container.get_text(separator='\n').strip()
+                            # Simple cleanup: remove the header text from the start
+                            header_text = about_header.get_text(strip=True)
+                            if full_text.lower().startswith(header_text.lower()):
+                                job_details['about_company_description'] = full_text[len(header_text):].strip()
                             else:
-                                # Find the next div or section after the header
-                                next_content = about_header.find_next_sibling(['div', 'section', 'p'])
-                                if next_content:
-                                    job_details['about_company_description'] = next_content.get_text(separator='\n').strip()
+                                # Sometimes the text is in a sibling div
+                                sibling = about_header.find_next_sibling('div')
+                                if sibling:
+                                    job_details['about_company_description'] = sibling.get_text(strip=True)
                 except Exception as e:
-                    print(f"[SCRAPER] Error extracting about company: {e}")
+                    print(f"[SCRAPER] Error extracting company info: {e}")
             
             # Debug Summary
-            if soup:
-                print(f"[SCRAPER] BeautifulSoup Extraction Summary:")
-                print(f"   - Title: {job_details['header_title']}")
-                print(f"   - Desc Length: {len(job_details.get('job_description_content', ''))}")
-                print(f"   - Skills Found: {len(job_details.get('key_skills', []))}")
+            print(f"[SCRAPER] Extraction Summary:")
+            print(f"   - Title: {job_details['header_title']}")
+            print(f"   - Desc Length: {len(job_details.get('job_description_content', ''))}")
+            print(f"   - Skills Found: {len(job_details.get('key_skills', []))}")
             
             # Debug: Print summary of scraped fields
             def has_value(v):
